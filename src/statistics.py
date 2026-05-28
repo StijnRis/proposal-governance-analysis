@@ -1,27 +1,43 @@
 """Core statistics calculations for proposal governance analysis."""
 
 import sqlite3
-from typing import Any, Dict, List, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Tuple, Union
 
 import pandas as pd
 
 # use shared parser
-from timeutils import to_naive_series as _to_naive_series
+from src.timeutils import to_naive_series as _to_naive_series
+from src import governance
 
 
-def get_projects(db_path: str) -> List[Tuple[int, str]]:
+DBOrConn = Union[Path, sqlite3.Connection]
+
+
+def _open_conn(db: DBOrConn):
+    """Return (conn, should_close) where should_close=True if we opened it here."""
+    if isinstance(db, sqlite3.Connection):
+        return db, False
+    conn = sqlite3.connect(str(db))
+    return conn, True
+
+
+def get_projects(db: DBOrConn) -> List[Tuple[int, str]]:
     """Get all projects from database."""
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("SELECT project_id, project_name FROM Project")
-    projects = cursor.fetchall()
-    conn.close()
+    conn, close = _open_conn(db)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT project_id, project_name FROM Project")
+        projects = cursor.fetchall()
+    finally:
+        if close:
+            conn.close()
     return projects
 
 
-def calculate_basic_counts(db_path: str, project_id: int) -> Dict[str, int]:
+def calculate_basic_counts(db: DBOrConn, project_id: int) -> Dict[str, int]:
     """Calculate basic counts: proposals, revisions, authors, comments, stages."""
-    conn = sqlite3.connect(db_path)
+    conn, close = _open_conn(db)
     cursor = conn.cursor()
 
     # Count proposals
@@ -47,12 +63,13 @@ def calculate_basic_counts(db_path: str, project_id: int) -> Dict[str, int]:
 
     # Count unique stages
     cursor.execute(
-        "SELECT COUNT(DISTINCT normalised_status) FROM StageHistory WHERE project_id = ?",
+        "SELECT COUNT(DISTINCT normalised_status) FROM ProposalStatus WHERE project_id = ?",
         (project_id,),
     )
     num_stages = cursor.fetchone()[0]
 
-    conn.close()
+    if close:
+        conn.close()
 
     return {
         "num_proposals": num_proposals,
@@ -63,25 +80,28 @@ def calculate_basic_counts(db_path: str, project_id: int) -> Dict[str, int]:
     }
 
 
-def calculate_success_rate(db_path: str, project_id: int) -> float:
+def calculate_success_rate(db: DBOrConn, project_id: int) -> float:
     """Calculate success rate of proposals based on final stage."""
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+    conn, close = _open_conn(db)
+    try:
+        cursor = conn.cursor()
 
-    # Get proposals with their final status
-    cursor.execute(
-        """
-        SELECT p.proposal_id, 
-               (SELECT normalised_status FROM StageHistory 
-                WHERE proposal_id = p.proposal_id AND project_id = ?
-                ORDER BY created_at DESC LIMIT 1) as final_status
-        FROM Proposal p
-        WHERE p.project_id = ?
-        """,
-        (project_id, project_id),
-    )
-    proposals = cursor.fetchall()
-    conn.close()
+        # Get proposals with their final status
+        cursor.execute(
+            """
+            SELECT p.proposal_id, 
+                (SELECT normalised_status FROM ProposalStatus 
+                    WHERE proposal_id = p.proposal_id AND project_id = ?
+                    ORDER BY created_at DESC LIMIT 1) as final_status
+            FROM Proposal p
+            WHERE p.project_id = ?
+            """,
+            (project_id, project_id),
+        )
+        proposals = cursor.fetchall()
+    finally:
+        if close:
+            conn.close()
 
     if not proposals:
         return 0.0
@@ -98,17 +118,20 @@ def calculate_success_rate(db_path: str, project_id: int) -> float:
     return (successful / len(proposals)) * 100 if proposals else 0.0
 
 
-def get_revisions_over_time(db_path: str, project_id: int) -> pd.DataFrame:
+def get_revisions_over_time(db: DBOrConn, project_id: int) -> pd.DataFrame:
     """Get proposal revisions over time."""
-    conn = sqlite3.connect(db_path)
-    query = """
+    conn, close = _open_conn(db)
+    try:
+        query = """
         SELECT proposal_id, created_at, revision_index
         FROM ProposalRevision
         WHERE project_id = ?
         ORDER BY created_at
     """
-    df = pd.read_sql_query(query, conn, params=(project_id,))
-    conn.close()
+        df = pd.read_sql_query(query, conn, params=(project_id,))
+    finally:
+        if close:
+            conn.close()
 
     if df.empty:
         return df
@@ -117,12 +140,11 @@ def get_revisions_over_time(db_path: str, project_id: int) -> pd.DataFrame:
     return df
 
 
-def get_author_tenure_distribution(
-    db_path: str, project_id: int
-) -> Dict[str, List[int]]:
+def get_author_tenure_distribution(db: DBOrConn, project_id: int) -> Dict[str, List[int]]:
     """Calculate how long each author stayed active (first to last revision)."""
-    conn = sqlite3.connect(db_path)
-    query = """
+    conn, close = _open_conn(db)
+    try:
+        query = """
         SELECT author_id, MIN(created_at) as first_date, MAX(created_at) as last_date
         FROM (
             SELECT author_id, created_at
@@ -134,8 +156,10 @@ def get_author_tenure_distribution(
         )
         GROUP BY author_id
     """
-    df = pd.read_sql_query(query, conn, params=(project_id,))
-    conn.close()
+        df = pd.read_sql_query(query, conn, params=(project_id,))
+    finally:
+        if close:
+            conn.close()
 
     if df.empty:
         return {"duration_days": [], "author_count": []}
@@ -158,26 +182,30 @@ def get_author_tenure_distribution(
     }
 
 
-def get_author_activity_distribution(db_path: str, project_id: int) -> pd.DataFrame:
+def get_author_activity_distribution(db: DBOrConn, project_id: int) -> pd.DataFrame:
     """Get author activity sorted by most active first."""
-    conn = sqlite3.connect(db_path)
-    query = """
+    conn, close = _open_conn(db)
+    try:
+        query = """
         SELECT author_id, COUNT(*) as revision_count
         FROM ProposalRevisionAuthor
         WHERE project_id = ?
         GROUP BY author_id
         ORDER BY revision_count DESC
     """
-    df = pd.read_sql_query(query, conn, params=(project_id,))
-    conn.close()
+        df = pd.read_sql_query(query, conn, params=(project_id,))
+    finally:
+        if close:
+            conn.close()
 
     return df
 
 
-def get_comments_per_proposal(db_path: str, project_id: int) -> pd.DataFrame:
+def get_comments_per_proposal(db: DBOrConn, project_id: int) -> pd.DataFrame:
     """Get comment counts and unique authors per proposal."""
-    conn = sqlite3.connect(db_path)
-    query = """
+    conn, close = _open_conn(db)
+    try:
+        query = """
         SELECT proposal_id, 
                COUNT(*) as comment_count,
                COUNT(DISTINCT author_id) as unique_authors
@@ -186,16 +214,19 @@ def get_comments_per_proposal(db_path: str, project_id: int) -> pd.DataFrame:
         GROUP BY proposal_id
         ORDER BY comment_count DESC
     """
-    df = pd.read_sql_query(query, conn, params=(project_id,))
-    conn.close()
+        df = pd.read_sql_query(query, conn, params=(project_id,))
+    finally:
+        if close:
+            conn.close()
 
     return df
 
 
-def get_revision_authors_per_year(db_path: str, project_id: int) -> Dict[int, int]:
+def get_revision_authors_per_year(db: DBOrConn, project_id: int) -> Dict[int, int]:
     """Return a mapping year -> number of unique authors who proposed revisions that year."""
-    conn = sqlite3.connect(db_path)
-    query = """
+    conn, close = _open_conn(db)
+    try:
+        query = """
         SELECT pra.author_id, pr.created_at
         FROM ProposalRevisionAuthor pra
         JOIN ProposalRevision pr ON pra.proposal_id = pr.proposal_id
@@ -203,8 +234,10 @@ def get_revision_authors_per_year(db_path: str, project_id: int) -> Dict[int, in
             AND pra.project_id = pr.project_id
         WHERE pra.project_id = ?
     """
-    df = pd.read_sql_query(query, conn, params=(project_id,))
-    conn.close()
+        df = pd.read_sql_query(query, conn, params=(project_id,))
+    finally:
+        if close:
+            conn.close()
 
     if df.empty:
         return {}
@@ -212,19 +245,22 @@ def get_revision_authors_per_year(db_path: str, project_id: int) -> Dict[int, in
     df["created_at"] = _to_naive_series(df["created_at"])
     df["year"] = df["created_at"].dt.year
     counts = df.groupby("year")["author_id"].nunique().sort_index()
-    return {int(k): int(v) for k, v in counts.to_dict().items()}
+    return {int(k): int(v) for k, v in zip(counts.index, counts.values)}
 
 
-def get_comment_authors_per_year(db_path: str, project_id: int) -> Dict[int, int]:
+def get_comment_authors_per_year(db: DBOrConn, project_id: int) -> Dict[int, int]:
     """Return a mapping year -> number of unique authors who left comments that year."""
-    conn = sqlite3.connect(db_path)
-    query = """
+    conn, close = _open_conn(db)
+    try:
+        query = """
         SELECT author_id, created_at
         FROM Comment
         WHERE project_id = ?
     """
-    df = pd.read_sql_query(query, conn, params=(project_id,))
-    conn.close()
+        df = pd.read_sql_query(query, conn, params=(project_id,))
+    finally:
+        if close:
+            conn.close()
 
     if df.empty:
         return {}
@@ -232,27 +268,28 @@ def get_comment_authors_per_year(db_path: str, project_id: int) -> Dict[int, int
     df["created_at"] = _to_naive_series(df["created_at"])
     df["year"] = df["created_at"].dt.year
     counts = df.groupby("year")["author_id"].nunique().sort_index()
-    return {int(k): int(v) for k, v in counts.to_dict().items()}
+    return {int(k): int(v) for k, v in zip(counts.index, counts.values)}
 
 
-def get_proposal_stage_counts_per_year(
-    db_path: str, project_id: int
-) -> Dict[int, Dict[str, int]]:
+def get_proposal_stage_counts_per_year(db: DBOrConn, project_id: int) -> Dict[int, Dict[str, int]]:
     """Return mapping year -> {stage: number_of_proposals_in_stage}.
 
     For each proposal and each year, the stage is taken as the latest `normalised_status`
     recorded on or before the end of that year. Proposals without any stage before
     a given year are ignored for that year.
     """
-    conn = sqlite3.connect(db_path)
-    query = """
+    conn, close = _open_conn(db)
+    try:
+        query = """
         SELECT proposal_id, normalised_status, created_at
-        FROM StageHistory
+        FROM ProposalStatus
         WHERE project_id = ?
         ORDER BY proposal_id, created_at
     """
-    df = pd.read_sql_query(query, conn, params=(project_id,))
-    conn.close()
+        df = pd.read_sql_query(query, conn, params=(project_id,))
+    finally:
+        if close:
+            conn.close()
 
     if df.empty:
         return {}
@@ -298,18 +335,21 @@ def get_proposal_stage_counts_per_year(
     return result
 
 
-def get_proposals_over_time(db_path: str, project_id: int) -> pd.DataFrame:
+def get_proposals_over_time(db: DBOrConn, project_id: int) -> pd.DataFrame:
     """Get proposal creation dates (earliest revision) for proposals in a project."""
-    conn = sqlite3.connect(db_path)
-    query = """
+    conn, close = _open_conn(db)
+    try:
+        query = """
         SELECT proposal_id, MIN(created_at) as created_at
         FROM ProposalRevision
         WHERE project_id = ?
         GROUP BY proposal_id
         ORDER BY created_at
     """
-    df = pd.read_sql_query(query, conn, params=(project_id,))
-    conn.close()
+        df = pd.read_sql_query(query, conn, params=(project_id,))
+    finally:
+        if close:
+            conn.close()
 
     if df.empty:
         return df
@@ -318,17 +358,14 @@ def get_proposals_over_time(db_path: str, project_id: int) -> pd.DataFrame:
     return df
 
 
-def calculate_all_statistics(db_path: str) -> Dict[str, Dict[str, Any]]:
+def calculate_all_statistics(db: DBOrConn) -> Dict[str, Dict[str, Any]]:
     """Calculate all statistics and governance metrics for all projects."""
-    projects = get_projects(db_path)
+    projects = get_projects(db)
     all_stats: Dict[str, Dict[str, Any]] = {}
-
-    # import governance helpers lazily to avoid import-time issues
-    import governance
 
     for project_id, project_name in projects:
         # per-proposal comment counts and unique authors
-        comments_df = get_comments_per_proposal(db_path, project_id)
+        comments_df = get_comments_per_proposal(db, project_id)
         if comments_df is None or comments_df.empty:
             avg_comments = 0.0
             avg_unique_authors = 0.0
@@ -340,38 +377,36 @@ def calculate_all_statistics(db_path: str) -> Dict[str, Dict[str, Any]]:
         stats = {
             "project_id": project_id,
             "project_name": project_name,
-            "basic_counts": calculate_basic_counts(db_path, project_id),
-            "success_rate": calculate_success_rate(db_path, project_id),
-            "revisions_over_time": get_revisions_over_time(db_path, project_id),
-            "proposals_over_time": get_proposals_over_time(db_path, project_id),
+            "basic_counts": calculate_basic_counts(db, project_id),
+            "success_rate": calculate_success_rate(db, project_id),
+            "revisions_over_time": get_revisions_over_time(db, project_id),
+            "proposals_over_time": get_proposals_over_time(db, project_id),
             "comments_per_proposal": comments_df,
             "avg_comments_per_proposal": avg_comments,
             "avg_unique_authors_per_proposal": avg_unique_authors,
             # authors per year metrics
             "authors_proposing_per_year": get_revision_authors_per_year(
-                db_path, project_id
+                db, project_id
             ),
             "authors_commenting_per_year": get_comment_authors_per_year(
-                db_path, project_id
+                db, project_id
             ),
             "proposal_stage_counts_per_year": get_proposal_stage_counts_per_year(
-                db_path, project_id
+                db, project_id
             ),
         }
 
         # governance metrics per year
-        independence = governance.compute_independence_hhi_per_year(db_path, project_id)
-        pluralism = governance.compute_pluralism_author_gini_per_year(
-            db_path, project_id
-        )
+        independence = governance.compute_independence_hhi_per_year(db, project_id)
+        pluralism = governance.compute_pluralism_author_gini_per_year(db, project_id)
         representation = governance.compute_representation_comment_gini_per_year(
-            db_path, project_id
+            db, project_id
         )
         centralization = governance.compute_betweenness_centralization_per_year(
-            db_path, project_id
+            db, project_id
         )
         newcomer_success = governance.compute_newcomer_success_rate_per_year(
-            db_path, project_id
+            db, project_id
         )
 
         years = sorted(

@@ -5,7 +5,7 @@ Adds:
 - radar plot for the last year of each project
 """
 
-import os
+from pathlib import Path
 from typing import Any, Dict
 
 import matplotlib.pyplot as plt
@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 # shared time parsing utility
-from timeutils import to_naive_series as _to_naive_series
+from src.timeutils import to_naive_series as _to_naive_series
 
 # default font sizes for clearer labels
 _TITLE_FS = 30
@@ -22,13 +22,14 @@ _TICK_FS = 20
 _LEGEND_FS = 20
 
 
-def ensure_output_dir(output_dir: str = "output") -> None:
+def ensure_output_dir(output_dir: Path) -> None:
     """Ensure output directory exists."""
-    os.makedirs(output_dir, exist_ok=True)
+    outp = Path(output_dir)
+    outp.mkdir(parents=True, exist_ok=True)
 
 
 def plot_revisions_over_time(
-    stats: Dict[str, Any], project_name: str, output_dir: str = "output"
+    stats: Dict[str, Any], project_name: str, output_dir: Path
 ) -> None:
     """Plot proposal revisions per year as a bar chart."""
     df = stats[project_name].get("revisions_over_time")
@@ -54,18 +55,14 @@ def plot_revisions_over_time(
     plt.yticks(fontsize=_TICK_FS)
     plt.grid(True, alpha=0.3, axis="y")
     plt.tight_layout()
-    plt.savefig(
-        os.path.join(
-            output_dir,
-            f"{project_name.lower().replace(' ', '_')}_revisions_timeline.png",
-        ),
-        dpi=300,
-    )
+    outp = Path(output_dir)
+    fname = f"{project_name.lower().replace(' ', '_')}_revisions_timeline.png"
+    plt.savefig(str(outp / fname), dpi=300)
     plt.close()
 
 
 def plot_authors_proposing_per_year(
-    stats: Dict[str, Any], project_name: str, output_dir: str = "output"
+    stats: Dict[str, Any], project_name: str, output_dir: Path
 ) -> None:
     """Plot number of unique authors who proposed revisions per year."""
     data = stats[project_name].get("authors_proposing_per_year", {})
@@ -86,18 +83,14 @@ def plot_authors_proposing_per_year(
     plt.yticks(fontsize=_TICK_FS)
     plt.grid(True, alpha=0.3, axis="y")
     plt.tight_layout()
-    plt.savefig(
-        os.path.join(
-            output_dir,
-            f"{project_name.lower().replace(' ', '_')}_authors_proposing_per_year.png",
-        ),
-        dpi=300,
-    )
+    outp = Path(output_dir)
+    fname = f"{project_name.lower().replace(' ', '_')}_authors_proposing_per_year.png"
+    plt.savefig(str(outp / fname), dpi=300)
     plt.close()
 
 
 def plot_authors_commenting_per_year(
-    stats: Dict[str, Any], project_name: str, output_dir: str = "output"
+    stats: Dict[str, Any], project_name: str, output_dir: Path
 ) -> None:
     """Plot number of unique authors who left comments per year."""
     data = stats[project_name].get("authors_commenting_per_year", {})
@@ -116,18 +109,54 @@ def plot_authors_commenting_per_year(
     plt.yticks(fontsize=_TICK_FS)
     plt.grid(True, alpha=0.3, axis="y")
     plt.tight_layout()
-    plt.savefig(
-        os.path.join(
-            output_dir,
-            f"{project_name.lower().replace(' ', '_')}_authors_commenting_per_year.png",
-        ),
-        dpi=300,
-    )
+    outp = Path(output_dir)
+    fname = f"{project_name.lower().replace(' ', '_')}_authors_commenting_per_year.png"
+    plt.savefig(str(outp / fname), dpi=300)
+    plt.close()
+
+
+def plot_authors_proposing_and_commenting_distinct_per_year(
+    stats: Dict[str, Any], project_name: str, output_dir: Path
+) -> None:
+    """Combine distinct authors proposing and commenting per year into one plot.
+
+    Uses the pre-computed per-year unique-author counts from `statistics.py`.
+    Rotates x-axis labels by 45 degrees for readability.
+    """
+    prop = stats[project_name].get("authors_proposing_per_year", {}) or {}
+    comm = stats[project_name].get("authors_commenting_per_year", {}) or {}
+
+    # union of years across both series
+    years = sorted(set(list(prop.keys()) + list(comm.keys())))
+    if not years:
+        return
+
+    prop_counts = [int(prop.get(y, 0)) for y in years]
+    comm_counts = [int(comm.get(y, 0)) for y in years]
+
+    x = np.arange(len(years))
+    width = 0.4
+
+    plt.figure(figsize=(12, 6))
+    plt.bar(x - width / 2, prop_counts, width=width, label="Proposing (distinct)", edgecolor="black", alpha=0.8)
+    plt.bar(x + width / 2, comm_counts, width=width, label="Commenting (distinct)", edgecolor="black", alpha=0.8)
+
+    plt.xlabel("Year", fontsize=_LABEL_FS)
+    plt.ylabel("Number of Distinct Authors", fontsize=_LABEL_FS)
+    plt.title(f"{project_name}: Distinct Authors Proposing vs Commenting per Year", fontsize=_TITLE_FS)
+    plt.xticks(x, [str(y) for y in years], fontsize=_TICK_FS, rotation=45)
+    plt.yticks(fontsize=_TICK_FS)
+    plt.legend(fontsize=_LEGEND_FS)
+    plt.grid(True, alpha=0.3, axis="y")
+    plt.tight_layout()
+    outp = Path(output_dir)
+    fname = f"{project_name.lower().replace(' ', '_')}_authors_proposing_commenting_per_year.png"
+    plt.savefig(str(outp / fname), dpi=300)
     plt.close()
 
 
 def plot_proposals_over_time(
-    stats: Dict[str, Any], project_name: str, output_dir: str = "output"
+    stats: Dict[str, Any], project_name: str, output_dir: Path
 ) -> None:
     """Plot number of proposals created per year as a bar chart."""
     df = stats[project_name].get("proposals_over_time")
@@ -151,18 +180,14 @@ def plot_proposals_over_time(
     plt.yticks(fontsize=_TICK_FS)
     plt.grid(True, alpha=0.3, axis="y")
     plt.tight_layout()
-    plt.savefig(
-        os.path.join(
-            output_dir,
-            f"{project_name.lower().replace(' ', '_')}_proposals_timeline.png",
-        ),
-        dpi=300,
-    )
+    outp = Path(output_dir)
+    fname = f"{project_name.lower().replace(' ', '_')}_proposals_timeline.png"
+    plt.savefig(str(outp / fname), dpi=300)
     plt.close()
 
 
 def plot_author_tenure_distribution(
-    stats: Dict[str, Any], project_name: str, output_dir: str = "output"
+    stats: Dict[str, Any], project_name: str, output_dir: Path
 ) -> None:
     """Plot histogram of author tenure duration."""
     tenure_data = stats[project_name].get("author_tenure_distribution", {})
@@ -180,17 +205,14 @@ def plot_author_tenure_distribution(
     plt.yticks(fontsize=_TICK_FS)
     plt.grid(True, alpha=0.3, axis="y")
     plt.tight_layout()
-    plt.savefig(
-        os.path.join(
-            output_dir, f"{project_name.lower().replace(' ', '_')}_author_tenure.png"
-        ),
-        dpi=300,
-    )
+    outp = Path(output_dir)
+    fname = f"{project_name.lower().replace(' ', '_')}_author_tenure.png"
+    plt.savefig(str(outp / fname), dpi=300)
     plt.close()
 
 
 def plot_author_activity_distribution(
-    stats: Dict[str, Any], project_name: str, output_dir: str = "output"
+    stats: Dict[str, Any], project_name: str, output_dir: Path
 ) -> None:
     """Plot author activity distribution (top N authors by revision count)."""
     activity_df = stats[project_name].get(
@@ -222,17 +244,14 @@ def plot_author_activity_distribution(
     plt.yticks(fontsize=_TICK_FS)
     plt.grid(True, alpha=0.3, axis="y")
     plt.tight_layout()
-    plt.savefig(
-        os.path.join(
-            output_dir, f"{project_name.lower().replace(' ', '_')}_author_activity.png"
-        ),
-        dpi=300,
-    )
+    outp = Path(output_dir)
+    fname = f"{project_name.lower().replace(' ', '_')}_author_activity.png"
+    plt.savefig(str(outp / fname), dpi=300)
     plt.close()
 
 
 def plot_comments_distribution(
-    stats: Dict[str, Any], project_name: str, output_dir: str = "output"
+    stats: Dict[str, Any], project_name: str, output_dir: Path
 ) -> None:
     """Plot distribution of comments per proposal."""
     comments_df = stats[project_name].get("comments_per_proposal", pd.DataFrame())
@@ -249,18 +268,14 @@ def plot_comments_distribution(
     plt.yticks(fontsize=_TICK_FS)
     plt.grid(True, alpha=0.3, axis="y")
     plt.tight_layout()
-    plt.savefig(
-        os.path.join(
-            output_dir,
-            f"{project_name.lower().replace(' ', '_')}_comments_distribution.png",
-        ),
-        dpi=300,
-    )
+    outp = Path(output_dir)
+    fname = f"{project_name.lower().replace(' ', '_')}_comments_distribution.png"
+    plt.savefig(str(outp / fname), dpi=300)
     plt.close()
 
 
 def plot_governance_timeseries(
-    stats: Dict[str, Any], project_name: str, output_dir: str = "output"
+    stats: Dict[str, Any], project_name: str, output_dir: Path
 ) -> None:
     """Plot the five governance dimensions as time series on one chart."""
     gm = stats[project_name].get("governance_metrics")
@@ -301,18 +316,14 @@ def plot_governance_timeseries(
     plt.legend(fontsize=_LEGEND_FS)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(
-        os.path.join(
-            output_dir,
-            f"{project_name.lower().replace(' ', '_')}_governance_timeseries.png",
-        ),
-        dpi=300,
-    )
+    outp = Path(output_dir)
+    fname = f"{project_name.lower().replace(' ', '_')}_governance_timeseries.png"
+    plt.savefig(str(outp / fname), dpi=300)
     plt.close()
 
 
 def plot_governance_radar(
-    stats: Dict[str, Any], project_name: str, output_dir: str = "output"
+    stats: Dict[str, Any], project_name: str, output_dir: Path
 ) -> None:
     """Create a radar plot for the last year available for the project."""
     gm = stats[project_name].get("governance_metrics")
@@ -347,18 +358,20 @@ def plot_governance_radar(
     fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
     ax.plot(angles, values, color="tab:blue", linewidth=2)
     ax.fill(angles, values, color="tab:blue", alpha=0.25)
-    ax.set_thetagrids(np.degrees(angles[:-1]), labels, fontsize=_TICK_FS)
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(labels, fontsize=_TICK_FS)
     ax.set_ylim(0, 1)
     ax.set_title(f"{project_name} governance radar ({last_year})", fontsize=_TITLE_FS)
     plt.tight_layout()
     # use descriptive filename
     fname = f"{project_name.lower().replace(' ', '_')}_governance_radar_{last_year}.png"
-    plt.savefig(os.path.join(output_dir, fname), dpi=300)
+    outp = Path(output_dir)
+    plt.savefig(str(outp / fname), dpi=300)
     plt.close()
 
 
 def plot_proposal_stage_counts_per_year(
-    stats: Dict[str, Any], project_name: str, output_dir: str = "output"
+    stats: Dict[str, Any], project_name: str, output_dir: Path
 ) -> None:
     """Create a single stacked bar chart: one bar per year, stacks per stage.
 
@@ -417,12 +430,13 @@ def plot_proposal_stage_counts_per_year(
     fname = (
         f"{project_name.lower().replace(' ', '_')}_proposal_stage_counts_stacked.png"
     )
-    plt.savefig(os.path.join(output_dir, fname), dpi=300)
+    outp = Path(output_dir)
+    plt.savefig(str(outp / fname), dpi=300)
     plt.close()
 
 
 def save_governance_timeseries_md(
-    stats: Dict[str, Any], project_name: str, output_dir: str = "output"
+    stats: Dict[str, Any], project_name: str, output_dir: Path
 ) -> None:
     """Save governance timeseries for a project to a markdown table."""
     gm = stats[project_name].get("governance_metrics")
@@ -434,10 +448,11 @@ def save_governance_timeseries_md(
     # remove the most recent year from analysis
     if len(years) > 1:
         years = years[:-1]
-    md_path = os.path.join(
-        output_dir, f"{project_name.lower().replace(' ', '_')}_governance_timeseries.md"
+    outp = Path(output_dir)
+    md_path = (
+        outp / f"{project_name.lower().replace(' ', '_')}_governance_timeseries.md"
     )
-    with open(md_path, "w", encoding="utf-8") as f:
+    with md_path.open("w", encoding="utf-8") as f:
         f.write(f"# {project_name} Governance Timeseries\n\n")
         f.write(
             "| Year | Independence | Pluralism | Representation | Centralization | NewcomerSuccess |\n"
@@ -454,19 +469,19 @@ def save_governance_timeseries_md(
             )
 
 
-def generate_all_visualizations(
-    stats: Dict[str, Any], output_dir: str = "output"
-) -> None:
+def generate_all_visualizations(stats: Dict[str, Any], output_dir: Path) -> None:
     """Generate all visualizations for all projects."""
     ensure_output_dir(output_dir)
+    outp = Path(output_dir)
 
     for project_name in stats.keys():
         print(f"Generating visualizations for {project_name}...")
         plot_revisions_over_time(stats, project_name, output_dir)
-        plot_authors_proposing_per_year(stats, project_name, output_dir)
+        plot_authors_proposing_and_commenting_distinct_per_year(
+            stats, project_name, output_dir
+        )
         plot_proposals_over_time(stats, project_name, output_dir)
         plot_proposal_stage_counts_per_year(stats, project_name, output_dir)
-        plot_authors_commenting_per_year(stats, project_name, output_dir)
         plot_author_tenure_distribution(stats, project_name, output_dir)
         plot_author_activity_distribution(stats, project_name, output_dir)
         plot_comments_distribution(stats, project_name, output_dir)
@@ -475,15 +490,10 @@ def generate_all_visualizations(
         save_governance_timeseries_md(stats, project_name, output_dir)
         plot_governance_radar(stats, project_name, output_dir)
 
-    # Also create combined timeseries across all projects for each governance metric
-    plot_all_projects_governance_lines(stats, output_dir)
-
-    print(f"✓ All visualizations saved to {output_dir}/")
+    print(f"✓ All visualizations saved to {outp.name}/")
 
 
-def plot_all_projects_governance_lines(
-    stats: Dict[str, Any], output_dir: str = "output"
-) -> None:
+def plot_all_projects_governance_lines(stats: Dict[str, Any], output_dir: Path) -> None:
     """Create one line plot per governance metric with all projects over years.
 
     Each plot's y-axis is fixed to [0, 1]. The most recent year is removed per-project.
@@ -530,5 +540,5 @@ def plot_all_projects_governance_lines(
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
         fname = f"all_projects_{key}_timeseries.png"
-        plt.savefig(os.path.join(output_dir, fname), dpi=300)
+        plt.savefig(str(output_dir / fname), dpi=300)
         plt.close()

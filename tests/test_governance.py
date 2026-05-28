@@ -1,19 +1,14 @@
 import os
 import sqlite3
-import sys
 import tempfile
+from pathlib import Path
 
 import pytest
 
-# ensure src is importable
-sys.path.insert(
-    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
-)
-
-import governance
+from src import governance
 
 
-def create_db(path: str):
+def create_db(path: Path):
     conn = sqlite3.connect(path)
     cur = conn.cursor()
     cur.executescript(
@@ -21,9 +16,9 @@ def create_db(path: str):
         CREATE TABLE ProposalRevision (project_id INTEGER, proposal_id INTEGER, revision_index INTEGER, created_at TEXT);
         CREATE TABLE ProposalRevisionAuthor (project_id INTEGER, proposal_id INTEGER, revision_index INTEGER, author_id INTEGER);
         CREATE TABLE Comment (project_id INTEGER, proposal_id INTEGER, author_id INTEGER, created_at TEXT);
-        CREATE TABLE Affiliation (person_id INTEGER, organisation_id INTEGER);
+        CREATE TABLE Affiliation (organisation_id INTEGER, person_id INTEGER);
         CREATE TABLE Organisation (organisation_id INTEGER, organisation_name TEXT);
-        CREATE TABLE PersonUsername (person_id INTEGER, domain TEXT);
+        CREATE TABLE PersonIdentifier (person_id INTEGER, domain TEXT, identifier_type TEXT, identifier TEXT);
         """
     )
     conn.commit()
@@ -31,14 +26,17 @@ def create_db(path: str):
 
 
 def test_independence_hhi_excludes_unmapped():
-    fd, path = tempfile.mkstemp(suffix=".sqlite")
+    fd, path_str = tempfile.mkstemp(suffix=".sqlite")
     os.close(fd)
+    path = Path(path_str)
+
     conn = create_db(path)
     cur = conn.cursor()
     # project 1, year 2020
     cur.execute("INSERT INTO Organisation VALUES (?, ?)", (1, "OrgA"))
     # author 10 affiliated with OrgA, author 11 unmapped
-    cur.execute("INSERT INTO Affiliation VALUES (?, ?)", (10, 1))
+    # Affiliation schema is (organisation_id, person_id)
+    cur.execute("INSERT INTO Affiliation VALUES (?, ?)", (1, 10))
     # two proposals with single authors
     cur.execute(
         "INSERT INTO ProposalRevision VALUES (1, 100, 0, '2020-01-01T00:00:00Z')"
@@ -49,17 +47,19 @@ def test_independence_hhi_excludes_unmapped():
     )
     cur.execute("INSERT INTO ProposalRevisionAuthor VALUES (1, 101, 0, 11)")
     conn.commit()
+    conn.close()
 
     hhi = governance.compute_independence_hhi_per_year(path, 1)
     # only OrgA counted -> HHI = 1.0
     assert hhi.get(2020) == pytest.approx(1.0)
-    conn.close()
     os.remove(path)
 
 
 def test_betweenness_centralization_path_graph():
-    fd, path = tempfile.mkstemp(suffix=".sqlite")
+    fd, path_str = tempfile.mkstemp(suffix=".sqlite")
     os.close(fd)
+    path = Path(path_str)
+
     conn = create_db(path)
     cur = conn.cursor()
     # Create three authors connected as 1-2 and 2-3 via revisions
@@ -83,8 +83,10 @@ def test_betweenness_centralization_path_graph():
 
 
 def test_newcomer_onboarding_rate():
-    fd, path = tempfile.mkstemp(suffix=".sqlite")
+    fd, path_str = tempfile.mkstemp(suffix=".sqlite")
     os.close(fd)
+    path = Path(path_str)
+
     conn = create_db(path)
     cur = conn.cursor()
     # author 20 had prior activity in 2019

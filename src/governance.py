@@ -5,7 +5,8 @@ per-year values for the five governance dimensions described in the proposal.
 """
 
 import sqlite3
-from typing import Any, Dict, List
+from pathlib import Path
+from typing import Dict, List, Union
 
 import networkx as nx
 import pandas as pd
@@ -14,36 +15,7 @@ import pandas as pd
 def _parse_datetime_series(series):
     """Robustly parse a pandas Series of datetimes (strings, bytes) into UTC datetimes."""
 
-    def _conv(x):
-        if pd.isna(x):
-            return pd.NaT
-        # decode bytes
-        if isinstance(x, (bytes, bytearray)):
-            try:
-                x = x.decode("utf-8")
-            except Exception:
-                return pd.NaT
-        # numeric or digit-strings -> treat as epoch
-        try:
-            if isinstance(x, (int, float)) or (
-                isinstance(x, str)
-                and x.strip().lstrip("-").replace(".", "", 1).isdigit()
-            ):
-                val = float(x)
-                if val > 1e15:
-                    return pd.to_datetime(
-                        int(val), unit="ns", utc=True, errors="coerce"
-                    )
-                if val > 1e12:
-                    return pd.to_datetime(
-                        int(val), unit="ms", utc=True, errors="coerce"
-                    )
-                return pd.to_datetime(val, unit="s", utc=True, errors="coerce")
-        except Exception:
-            pass
-        return pd.to_datetime(x, utc=True, errors="coerce")
-
-    return series.apply(_conv)
+    return series.apply(_parse_single_datetime)
 
 
 def _parse_single_datetime(value):
@@ -56,19 +28,16 @@ def _parse_single_datetime(value):
         except Exception:
             return pd.NaT
     # numeric epoch handling
-    try:
-        if isinstance(value, (int, float)) or (
-            isinstance(value, str)
-            and value.strip().lstrip("-").replace(".", "", 1).isdigit()
-        ):
-            val = float(value)
-            if val > 1e15:
-                return pd.to_datetime(int(val), unit="ns", utc=True, errors="coerce")
-            if val > 1e12:
-                return pd.to_datetime(int(val), unit="ms", utc=True, errors="coerce")
-            return pd.to_datetime(val, unit="s", utc=True, errors="coerce")
-    except Exception:
-        pass
+    if isinstance(value, (int, float)) or (
+        isinstance(value, str)
+        and value.strip().lstrip("-").replace(".", "", 1).isdigit()
+    ):
+        val = float(value)
+        if val > 1e15:
+            return pd.to_datetime(int(val), unit="ns", utc=True, errors="coerce")
+        if val > 1e12:
+            return pd.to_datetime(int(val), unit="ms", utc=True, errors="coerce")
+        return pd.to_datetime(val, unit="s", utc=True, errors="coerce")
 
     return pd.to_datetime(value, utc=True, errors="coerce")
 
@@ -85,6 +54,16 @@ def _gini(values: List[float]) -> float:
     for i in range(n):
         diff_sum += abs(arr[i] - arr).sum()
     return float(diff_sum / (2 * (n**2) * mean))
+
+
+DBOrConn = Union[Path, sqlite3.Connection]
+
+
+def _open_conn(db: DBOrConn):
+    if isinstance(db, sqlite3.Connection):
+        return db, False
+    return sqlite3.connect(str(db)), True
+
 
 def _get_person_org_map(
     conn: sqlite3.Connection, person_ids: List[int]
@@ -103,8 +82,10 @@ def _get_person_org_map(
 
     remaining = [pid for pid, v in result.items() if v is None]
     if remaining:
-        q2 = f"SELECT person_id, domain FROM PersonUsername WHERE person_id IN ({','.join(['?'] * len(remaining))})"
+        # fall back to PersonIdentifier table (new schema)
+        q2 = f"SELECT person_id, domain FROM PersonIdentifier WHERE person_id IN ({','.join(['?'] * len(remaining))})"
         cursor.execute(q2, remaining)
+        # there may be multiple identifiers per person; prefer any domain we find
         for person_id, domain in cursor.fetchall():
             if result.get(person_id) is None and domain:
                 result[person_id] = domain
@@ -117,9 +98,9 @@ def _get_person_org_map(
 
 
 def compute_independence_hhi_per_year(
-    db_path: str, project_id: int
+    db_path: DBOrConn, project_id: int
 ) -> Dict[int, float]:
-    conn = sqlite3.connect(db_path)
+    conn, close = _open_conn(db_path)
     proposals_df = pd.read_sql_query(
         "SELECT proposal_id, MIN(created_at) as created_at FROM ProposalRevision WHERE project_id = ? GROUP BY proposal_id",
         conn,
@@ -165,14 +146,15 @@ def compute_independence_hhi_per_year(
         shares = [c / total for c in org_counts.values()]
         year_hhi[year] = float(sum(s * s for s in shares))
 
-    conn.close()
+    if close:
+        conn.close()
     return year_hhi
 
 
 def compute_pluralism_author_gini_per_year(
-    db_path: str, project_id: int
+    db_path: DBOrConn, project_id: int
 ) -> Dict[int, float]:
-    conn = sqlite3.connect(db_path)
+    conn, close = _open_conn(db_path)
     proposals_df = pd.read_sql_query(
         "SELECT proposal_id, MIN(created_at) as created_at FROM ProposalRevision WHERE project_id = ? GROUP BY proposal_id",
         conn,
@@ -214,14 +196,15 @@ def compute_pluralism_author_gini_per_year(
             counts[a] = counts.get(a, 0) + 1
         year_gini[year] = _gini(list(counts.values()))
 
-    conn.close()
+    if close:
+        conn.close()
     return year_gini
 
 
 def compute_representation_comment_gini_per_year(
-    db_path: str, project_id: int
+    db_path: DBOrConn, project_id: int
 ) -> Dict[int, float]:
-    conn = sqlite3.connect(db_path)
+    conn, close = _open_conn(db_path)
     df = pd.read_sql_query(
         "SELECT author_id, created_at FROM Comment WHERE project_id = ? AND author_id IS NOT NULL",
         conn,
@@ -241,14 +224,15 @@ def compute_representation_comment_gini_per_year(
             continue
         counts = sub.groupby("author_id").size().tolist()
         year_gini[year] = _gini(counts)
-    conn.close()
+    if close:
+        conn.close()
     return year_gini
 
 
 def compute_betweenness_centralization_per_year(
-    db_path: str, project_id: int
+    db_path: DBOrConn, project_id: int
 ) -> Dict[int, float]:
-    conn = sqlite3.connect(db_path)
+    conn, close = _open_conn(db_path)
     rev_df = pd.read_sql_query(
         "SELECT proposal_id, revision_index, created_at FROM ProposalRevision WHERE project_id = ?",
         conn,
@@ -334,14 +318,15 @@ def compute_betweenness_centralization_per_year(
         centralization = sum_diff / denom if denom > 0 else 0.0
         year_centralization[year] = float(centralization)
 
-    conn.close()
+    if close:
+        conn.close()
     return year_centralization
 
 
 def compute_newcomer_success_rate_per_year(
-    db_path: str, project_id: int
+    db_path: DBOrConn, project_id: int
 ) -> Dict[int, float]:
-    conn = sqlite3.connect(db_path)
+    conn, close = _open_conn(db_path)
     proposals_df = pd.read_sql_query(
         "SELECT proposal_id, MIN(created_at) as created_at FROM ProposalRevision WHERE project_id = ? GROUP BY proposal_id",
         conn,
@@ -396,5 +381,6 @@ def compute_newcomer_success_rate_per_year(
         else:
             year_success[year] = newcomer_proposals_count / total_proposals_in_year
 
-    conn.close()
+    if close:
+        conn.close()
     return year_success
