@@ -10,9 +10,9 @@ Research-oriented development. Analysing how governance metrics evolve across mu
 * **Style:** Clean functional paradigm utilizing strict explicit type hints.
 
 ## Execution & Verification
-* Run Pipeline: `uv run main.py`
 * Run Tests: `uv run pytest` (Core math/logic only; no setup/integration tests).
-* Mandatory verification: Always run tests after any code modification. If any error occurs, stop and fix it before adding features.
+* Run Pipeline: `uv run main.py`
+* Mandatory verification: Always run tests AND pipeline after any code modification. If any error occurs, stop and fix it before adding features.
 
 ## Coding & Architecture Standards
 * Less is More: Prioritize brevity, readability, and reusability. If code can be refactored to be shorter without sacrificing clarity, or abstracted into a reusable component, do it. Eliminate boilerplate aggressively.
@@ -20,7 +20,7 @@ Research-oriented development. Analysing how governance metrics evolve across mu
 * Rich Type Safety: Avoid primitive obsession. Use exact, domain-specific types instead of generic primitives wherever possible (e.g., use pathlib.Path instead of str for file paths, datetime objects instead of raw strings/ints for time, etc.).
 * Completeness: Write 100% executable code. No placeholders (`# TODO`, `# ...`).
 * Modularity & Typing: Write small, single-purpose functions. Use strict type hints; `Any` and `object` is forbidden.
-* Fail-Fast Error Handling: Never use silent `try-except` blocks. Fail explicitly and let exceptions bubble up naturally. Raise descriptive errors immediately when inputs, states, or data transformations are wrong.
+* Fail-Fast: System should immediately report any condition that is likely to lead to a failure, rather than trying to smoothly handle it with default values or silent ignores
 * Dependencies: Lean heavily on standard/installed libraries. Use top-level imports only.
 * Documentation: Rely on descriptive naming. Omit docstrings and comments unless explaining complex mathematical algorithms.
 
