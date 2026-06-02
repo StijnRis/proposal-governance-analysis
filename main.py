@@ -1,12 +1,13 @@
 """Main orchestration script for proposal governance analysis."""
 
+import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 from src.governance import show_governance_statistics
 from src.dataloader import load_all_projects
-from src.statistics import generate_table_counts_markdown, show_basic_statistics
+from src.statistics import show_basic_statistics, generate_table_counts
 
 
 def main() -> None:
@@ -15,17 +16,23 @@ def main() -> None:
 
     # Setup core operational path markers
     data_dir = Path("data")
-    output_dir = Path("output")
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_output_dir = Path("output")
+    output_dir = base_output_dir / timestamp
 
-    # Clean output dir
-    for item in output_dir.glob("*"):
-        if item.is_file():
-            item.unlink()
-        elif item.is_dir():
-            for subitem in item.glob("*"):
-                if subitem.is_file():
-                    subitem.unlink()
-            item.rmdir()
+    # Clean output dir of 2 or more runs ago
+    dirs = sorted(base_output_dir.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for old_dir in dirs[2:]:
+        if old_dir.is_dir():
+            for item in old_dir.glob("*"):
+                if item.is_file():
+                    item.unlink()
+                elif item.is_dir():
+                    for subitem in item.glob("*"):
+                        if subitem.is_file():
+                            subitem.unlink()
+                    item.rmdir()
+            old_dir.rmdir()
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -39,26 +46,11 @@ def main() -> None:
             f"No SQLite databases found in target folder: {data_dir}"
         )
 
-    projects = load_all_projects(db_files)
+    projects = load_all_projects(db_files, max_proposals=None)
 
-    generate_table_counts_markdown(projects, output_dir)
+    generate_table_counts(projects, output_dir)
     show_basic_statistics(projects, output_dir)
     show_governance_statistics(projects, output_dir)
-    
-
-    # # Trigger comparative plotting run
-    # if all_metrics_results:
-    #     print("\n📊 Generating consolidated metrics plots over time...")
-    #     plot_governance_dimensions(all_metrics_results, output_dir)
-    # else:
-    #     print("\n⚠ No valid project data parsed. Skipping plot orchestration.")
-
-    # # Generate table counts markdown
-    # print("\n📋 Generating table counts markdown...")
-    # generate_table_counts_markdown(project_data, output_dir)
-
-    # print(f"\n✓ Analysis complete. Output saved to {output_dir}")
-
 
 if __name__ == "__main__":
     main()

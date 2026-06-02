@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import polars as pl
 
 from src.dataloader import IndividualProjectContext
-
+from tabulate import tabulate
 
 @dataclass
 class MetricConfig:
@@ -284,16 +284,15 @@ def show_basic_statistics(
     for cfg in METRIC_REGISTRY:
         _build_combined_grid(projects, cfg, output_dir)
 
-
-def generate_table_counts_markdown(
+def generate_table_counts(
     projects: list[IndividualProjectContext], output_path: Path
 ) -> None:
-    """Generates a tracking metrics markdown document detailing shape allocations per project."""
+    """Generates tracking metrics documents (Markdown and LaTeX) detailing shape allocations per project."""
     if not projects:
         return
 
     table_fields = [
-        ("Proposal", "proposals"),  # Map back using localized fields
+        ("Proposal", "proposals"),
         ("ProposalRevision", "proposal_revisions"),
         ("ProposalRevisionAuthor", "proposal_revision_authors"),
         ("ProposalStatus", "proposal_statuses"),
@@ -303,22 +302,37 @@ def generate_table_counts_markdown(
         ("Affiliation", "affiliations"),
     ]
 
-    markdown_lines = ["# Table Item Counts by Project\n"]
-    headers = ["| Table"] + [ctx.project_name for ctx in projects] + ["|"]
-    markdown_lines.append(" | ".join(headers))
-    markdown_lines.append("|" + "|".join(["---"] * (len(projects) + 1)) + "|")
+    # 1. Define headers
+    headers = ["Table"] + [ctx.project_name for ctx in projects]
 
+    # 2. Build the data rows
+    table_data = []
     for label, attr in table_fields:
-        row = [f"**{label}**"]
+        # Markdown looks best with bold labels, but we strip formatting for LaTeX if preferred.
+        # Here we keep standard text; headers/formatting can be handled by tabulate's styles.
+        row = [label] 
         for ctx in projects:
             df = getattr(ctx, attr)
-            # Adjust mapping counts for specialized/unique entities where appropriate
             count = (
                 df.select("proposal_id").n_unique() if label == "Proposal" else len(df)
             )
-            row.append(str(count))
-        markdown_lines.append("| " + " | ".join(row) + " |")
+            row.append(count)
+        table_data.append(row)
 
+    # 3. Ensure output directory exists
     output_path.mkdir(parents=True, exist_ok=True)
+
+    # 4. Generate and save Markdown Table
+    # tablefmt="github" creates a clean, GitHub-flavored markdown table
+    markdown_table = tabulate(table_data, headers=headers, tablefmt="github")
+    markdown_output = f"# Table Item Counts by Project\n\n{markdown_table}\n"
+    
     with open(output_path / "table_counts.md", "w") as f:
-        f.write("\n".join(markdown_lines))
+        f.write(markdown_output)
+
+    # 5. Generate and save LaTeX Table
+    # tablefmt="latex" creates a standard LaTeX tabular environment
+    latex_table = tabulate(table_data, headers=headers, tablefmt="latex")
+    
+    with open(output_path / "table_counts.tex", "w") as f:
+        f.write(latex_table)

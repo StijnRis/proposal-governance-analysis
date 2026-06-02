@@ -252,37 +252,65 @@ def _safe_read_table(conn: sqlite3.Connection, table_name: str) -> pl.DataFrame:
 
 def _slice_data_by_project(
     project_data: _MergedProjectData,
+    max_proposals: int | None = None,
+    seed: int | None = 42,  # Added a seed for reproducible test runs
 ) -> list[IndividualProjectContext]:
     """Traces relational tables back to a root project_id and splits them into clean contexts."""
+
+    base_proposals = project_data.proposals
+
+    # 1. Randomly sample up to max_proposals *per project*
+    if max_proposals is not None:
+        base_proposals = (
+            base_proposals
+            # Shuffle the entire dataframe randomly
+            .sample(fraction=1.0, shuffle=True, seed=seed)
+            # Group by project and take the first N sliced rows of that group
+            .group_by("project_id", maintain_order=True)
+            .head(max_proposals)
+        )
+
+    # 2. Get the unique projects that made the cut
+    allowed_project_ids = base_proposals.select("project_id").unique()
+    unique_projects = (
+        project_data.project.join(allowed_project_ids, on="project_id", how="inner")
+        .select(["project_id", "project_name"])
+        .unique()
+    )
+
     contexts = []
-    unique_projects = project_data.project.select(
-        ["project_id", "project_name"]
-    ).unique()
 
     for row in unique_projects.iter_rows(named=True):
         p_id, p_name = row["project_id"], row["project_name"]
 
+        # Project table filter
         proj = project_data.project.filter(pl.col("project_id") == p_id)
-        props = project_data.proposals.filter(pl.col("project_id") == p_id)
-        revs = project_data.proposal_revisions.filter(pl.col("project_id") == p_id)
-        rev_auths = project_data.proposal_revision_authors.filter(
+
+        # Proposal filtering tied strictly to our randomly sampled subset
+        proposals = base_proposals.filter(pl.col("project_id") == p_id)
+
+        # Get by project id
+        revisions = project_data.proposal_revisions.filter(pl.col("project_id") == p_id)
+        revision_authors = project_data.proposal_revision_authors.filter(
             pl.col("project_id") == p_id
         )
-        comms = project_data.comments.filter(pl.col("project_id") == p_id)
-        stats = project_data.proposal_status.filter(pl.col("project_id") == p_id)
-        rel_props = project_data.related_proposals.filter(pl.col("project_id") == p_id)
+        comments = project_data.comments.filter(pl.col("project_id") == p_id)
+        status = project_data.proposal_status.filter(pl.col("project_id") == p_id)
+        related_proposals = project_data.related_proposals.filter(
+            pl.col("project_id") == p_id
+        )
 
+        # Get by person id
         project_people_ids = (
             pl.concat(
                 [
-                    rev_auths.select(pl.col("author_id").alias("person_id")),
-                    comms.select(pl.col("author_id").alias("person_id")),
+                    revision_authors.select(pl.col("author_id").alias("person_id")),
+                    comments.select(pl.col("author_id").alias("person_id")),
                 ]
             )
             .drop_nulls()
             .unique()
         )
-
         people = project_data.persons.join(
             project_people_ids, on="person_id", how="inner"
         )
@@ -293,8 +321,14 @@ def _slice_data_by_project(
             project_people_ids, on="person_id", how="inner"
         )
 
+        # Get by organisation id
+        project_organisation_ids = (
+            affils.select(pl.col("organisation_id").alias("organisation_id"))
+            .drop_nulls()
+            .unique()
+        )
         orgs = project_data.organisations.join(
-            affils.select("organisation_id").unique(), on="organisation_id", how="inner"
+            project_organisation_ids, on="organisation_id", how="inner"
         )
 
         contexts.append(
@@ -302,23 +336,26 @@ def _slice_data_by_project(
                 project_id=p_id,
                 project_name=p_name,
                 project=proj,
-                proposals=props,
-                proposal_revisions=revs,
-                proposal_revision_authors=rev_auths,
-                proposal_statuses=stats,
-                comments=comms,
+                proposals=proposals,
+                proposal_revisions=revisions,
+                proposal_revision_authors=revision_authors,
+                proposal_statuses=status,
+                comments=comments,
                 persons=people,
                 person_identifiers=person_idents,
                 organisations=orgs,
                 affiliations=affils,
-                related_proposals=rel_props,
+                related_proposals=related_proposals,
             )
         )
 
+    contexts = sorted(contexts, key=lambda c: c.project_id)
     return contexts
 
 
-def load_all_projects(db_paths: Sequence[Path]) -> list[IndividualProjectContext]:
+def load_all_projects(
+    db_paths: Sequence[Path], max_proposals: int | None
+) -> list[IndividualProjectContext]:
     """Reads multiple matching SQLite databases, merges data, and slices into isolated project contexts."""
     if not db_paths:
         raise ValueError("Must provide at least one database path.")
@@ -353,4 +390,4 @@ def load_all_projects(db_paths: Sequence[Path]) -> list[IndividualProjectContext
     )
 
     # Return structured isolated array
-    return _slice_data_by_project(merged_data)
+    return _slice_data_by_project(merged_data, max_proposals=max_proposals)
