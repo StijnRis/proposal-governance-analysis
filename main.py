@@ -12,6 +12,7 @@ from src.statistics import show_basic_statistics, generate_table_counts
 
 def main() -> None:
     """Load data, compute statistics, and generate visualizations."""
+    print("Starting proposal governance analysis...")
     load_dotenv()
 
     # Setup core operational path markers
@@ -40,7 +41,7 @@ def main() -> None:
     db_files = []
     for ext in ["*.sqlite3", "*.db", "*.sqlite"]:
         db_files.extend(data_dir.glob(ext))
-
+    
     if not db_files:
         raise FileNotFoundError(
             f"No SQLite databases found in target folder: {data_dir}"

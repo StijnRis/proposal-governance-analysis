@@ -7,9 +7,10 @@ from typing import Callable, Optional
 
 import matplotlib.pyplot as plt
 import polars as pl
+from tabulate import tabulate
 
 from src.dataloader import IndividualProjectContext
-from tabulate import tabulate
+
 
 @dataclass
 class MetricConfig:
@@ -284,6 +285,7 @@ def show_basic_statistics(
     for cfg in METRIC_REGISTRY:
         _build_combined_grid(projects, cfg, output_dir)
 
+
 def generate_table_counts(
     projects: list[IndividualProjectContext], output_path: Path
 ) -> None:
@@ -293,25 +295,23 @@ def generate_table_counts(
 
     table_fields = [
         ("Proposal", "proposals"),
-        ("ProposalRevision", "proposal_revisions"),
-        ("ProposalRevisionAuthor", "proposal_revision_authors"),
-        ("ProposalStatus", "proposal_statuses"),
+        ("Proposal revisions", "proposal_revisions"),
+        ("Proposal revision authors", "proposal_revision_authors"),
+        ("Proposal statuses", "proposal_statuses"),
         ("Comment", "comments"),
-        ("PersonIdentifier", "person_identifiers"),
-        ("Organisation", "organisations"),
-        ("Affiliation", "affiliations"),
+        ("Person identifiers", "person_identifiers"),
+        ("Organisations", "organisations"),
+        ("Affiliations", "affiliations"),
     ]
 
-    # 1. Define headers
-    headers = ["Table"] + [ctx.project_name for ctx in projects]
+    # --- 1. SWAP LAYOUT: Build Transposed Data ---
+    md_headers = ["Project"] + [label for label, _ in table_fields]
+    latex_headers = ["Project"] + [label for label, _ in table_fields]
 
-    # 2. Build the data rows
     table_data = []
-    for label, attr in table_fields:
-        # Markdown looks best with bold labels, but we strip formatting for LaTeX if preferred.
-        # Here we keep standard text; headers/formatting can be handled by tabulate's styles.
-        row = [label] 
-        for ctx in projects:
+    for ctx in projects:
+        row = [ctx.project_name]
+        for label, attr in table_fields:
             df = getattr(ctx, attr)
             count = (
                 df.select("proposal_id").n_unique() if label == "Proposal" else len(df)
@@ -319,20 +319,45 @@ def generate_table_counts(
             row.append(count)
         table_data.append(row)
 
-    # 3. Ensure output directory exists
+    # --- 2. Ensure output directory exists ---
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # 4. Generate and save Markdown Table
-    # tablefmt="github" creates a clean, GitHub-flavored markdown table
-    markdown_table = tabulate(table_data, headers=headers, tablefmt="github")
+    # --- 3. Generate and save Markdown Table ---
+    markdown_table = tabulate(table_data, headers=md_headers, tablefmt="github")
     markdown_output = f"# Table Item Counts by Project\n\n{markdown_table}\n"
-    
+
     with open(output_path / "table_counts.md", "w") as f:
         f.write(markdown_output)
 
-    # 5. Generate and save LaTeX Table
-    # tablefmt="latex" creates a standard LaTeX tabular environment
-    latex_table = tabulate(table_data, headers=headers, tablefmt="latex")
-    
+    # --- 4. Generate and save LaTeX Table matching template ---
+    num_data_cols = len(table_fields)
+
+    latex_lines = [
+        r"\begin{table*}[tb]",
+        r"    \centering",
+        r"    \caption{Overview of dataset counts across different programming languages and technologies.}",
+        r"    \label{tab:dataset_counts}",
+        # Define a custom centered wrapping column layout using tabularx
+        r"    \newcolumntype{Y}{>{\centering\arraybackslash}X}",
+        f"    \\begin{{tabularx}}{{\\textwidth}}{{l*{{{num_data_cols}}}{{Y}}}}",
+        r"    \hline",
+    ]
+
+    # Escape underscores for LaTeX safety
+    escaped_headers = [h.replace("_", r"\_") for h in latex_headers]
+    latex_lines.append("    " + " & ".join(escaped_headers) + r" \\")
+    latex_lines.append(r"    \hline")
+
+    # Populate numerical data rows
+    for row in table_data:
+        str_row = [str(item).replace("_", r"\_") for item in row]
+        latex_lines.append("    " + " & ".join(str_row) + r" \\")
+
+    latex_lines.append(r"    \hline")
+    latex_lines.append(r"    \end{tabularx}")
+    latex_lines.append(r"\end{table*}")
+
+    latex_table = "\n".join(latex_lines)
+
     with open(output_path / "table_counts.tex", "w") as f:
         f.write(latex_table)

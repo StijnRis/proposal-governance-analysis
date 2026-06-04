@@ -15,6 +15,7 @@ dependencies = [
     "pandas>=3.0.3",
     "pyarrow>=24.0.0",
     "tabulate>=0.10.0",
+    "rustworkx>=0.17.1",
 ]
 
 [dependency-groups]
