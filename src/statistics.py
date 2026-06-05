@@ -216,6 +216,7 @@ def _render_axis(ax: plt.Axes, df: pl.DataFrame, cfg: MetricConfig, title: str) 
         y_data = df.select(pl.col(cfg.y_col)).to_series().to_list()
         ax.bar(x_data, y_data, alpha=0.7, edgecolor="black")
         ax.tick_params(axis="x", rotation=45)
+        ax.set_xticklabels(x_data, rotation=45, ha="right", rotation_mode="anchor")
 
     ax.set_xlabel(cfg.xlabel, fontsize=10)
     ax.set_ylabel(cfg.ylabel, fontsize=10)

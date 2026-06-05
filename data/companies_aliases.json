@@ -1,0 +1,1522 @@
+{
+    "abetterinternet": [
+        "abetterinternet letsencrypt"
+    ],
+    "acm": [
+        "acm chapter at augsburg university"
+    ],
+    "aetna": [
+        "aetna cvs health"
+    ],
+    "akamai": [
+        "akamai technologies",
+        "lead principal engineer at akamai lke enterprise"
+    ],
+    "akuity": [
+        "akuity x microsoft"
+    ],
+    "alibaba": [
+        "alibaba clojure user group",
+        "alibaba cloud",
+        "alibaba cloud aliyun ack team kubernetes",
+        "alibaba group",
+        "aliyun",
+        "aliyun alibaba cloud container service"
+    ],
+    "amazon": [
+        "amazon com",
+        "amazon jp",
+        "amazon lab",
+        "amazon web services",
+        "amazon web services apache software foundation",
+        "amazon web services aws",
+        "amazon web services labs",
+        "aws",
+        "aws blueprints",
+        "aws controllers for kubernetes",
+        "aws eks",
+        "aws samples",
+        "aws student builder groups at dgu"
+    ],
+    "amutable": [
+        "amutable systems"
+    ],
+    "andreasen horowitz": [
+        "a z andreessen horowitz"
+    ],
+    "android": [
+        "android developers italia",
+        "android jetpack",
+        "androidaudiomods"
+    ],
+    "ansys": [
+        "abaqus"
+    ],
+    "ant group": [
+        "alipay",
+        "antgroup",
+        "antgroup dragonflyoss"
+    ],
+    "anthracite": [
+        "aclark",
+        "aclark net"
+    ],
+    "anthropic": [
+        "anthropic magic string trigger refusal faefb b dee f d afc ccd edcf e ccc fb b c c",
+        "anthropics"
+    ],
+    "apache": [
+        "apache oceanbase",
+        "apache spark on kubernetes",
+        "apachecn",
+        "collection of additional tools that are useful for folks using apache cloudstack",
+        "the apache software foundation"
+    ],
+    "apollo": [
+        "apollo graph",
+        "apollo graphql",
+        "apollo meteor",
+        "apollographql"
+    ],
+    "apple": [
+        "appcenter dashboard beta testers",
+        "apple developer academy ifce",
+        "tongji apple club"
+    ],
+    "applied mathematics at the university of colorado boulder": [
+        "cu boulder"
+    ],
+    "appscode": [
+        "appscode container engine ace",
+        "stash by appscode"
+    ],
+    "argo": [
+        "argo k s",
+        "argo oss",
+        "argo project",
+        "argoai",
+        "argoproj labs",
+        "the helm project"
+    ],
+    "arm": [
+        "arm rust lang",
+        "arm software"
+    ],
+    "arrow": [
+        "arrowbox"
+    ],
+    "astral": [
+        "astral sh",
+        "astral sh openai",
+        "astraw"
+    ],
+    "atlassian": [
+        "canva ex atlassian",
+        "trello"
+    ],
+    "australiapost": [
+        "post"
+    ],
+    "baillie": [
+        "baillie gifford"
+    ],
+    "bangalorerubyroom": [
+        "bangalore ruby user group",
+        "bangalorerb"
+    ],
+    "belkadan": [
+        "belkadan software"
+    ],
+    "bit": [
+        "bit prepared",
+        "bitbento"
+    ],
+    "bitcoin": [
+        "bitcoinj"
+    ],
+    "bits pilani": [
+        "department of visual media bits pilani",
+        "gdsc bitsp"
+    ],
+    "bloomberg": [
+        "bloomberg lp"
+    ],
+    "bobadilla": [
+        "bobadilla tech"
+    ],
+    "booking.com": [
+        "booking com",
+        "bookingcom"
+    ],
+    "broadcom": [
+        "ex pivotal ex vmware",
+        "heptio now part of vmware",
+        "pivotal r d kubernetes",
+        "vmware",
+        "vmware broadcom",
+        "vmware by broadcom",
+        "vmware cloud native apps",
+        "vmware tanzu"
+    ],
+    "brookhavennationallaboratory": [
+        "bnl",
+        "brookhaven national laboratory nsls ii",
+        "nsls at brookhaven national lab"
+    ],
+    "bytedance": [
+        "bitdance",
+        "bytedance kubewharf",
+        "bytedance volcengine cilium",
+        "https www bytedance com"
+    ],
+    "calpoly": [
+        "cal poly san luis obispo"
+    ],
+    "camen design": [
+        "camendesign"
+    ],
+    "carabiner": [
+        "carabiner dev uservers",
+        "carabiner systems"
+    ],
+    "carnegie mellon university": [
+        "cmu able",
+        "software and societal systems department s d"
+    ],
+    "carrefour": [
+        "carrefour group"
+    ],
+    "centos": [
+        "centos project",
+        "centos storage sig",
+        "centos workstation"
+    ],
+    "centricular": [
+        "centricular centricular"
+    ],
+    "cern": [],
+    "chainguard": [
+        "chainguard dev",
+        "chainguard images"
+    ],
+    "chalmers": [
+        "chalmers university of technology"
+    ],
+    "changeset": [
+        "changeset consulting"
+    ],
+    "chronosphere": [
+        "chronosphereio"
+    ],
+    "chucker": [
+        "chucker team"
+    ],
+    "cisco": [
+        "apigee",
+        "cisco open",
+        "cisco systems",
+        "splunk"
+    ],
+    "cloud native computing foundation": [
+        "aeraki mesh",
+        "agones",
+        "apisnoop",
+        "app container archived see https github com rkt rkt issues",
+        "appcontainer",
+        "bpfman",
+        "caicloud",
+        "cert manager",
+        "chaos mesh",
+        "cilium",
+        "client go",
+        "cncf",
+        "cni",
+        "cni genie",
+        "confidential containers",
+        "containerd",
+        "contiv",
+        "coredns",
+        "cosi project",
+        "couler project",
+        "cri o",
+        "crossplane",
+        "crossplane contrib",
+        "cryostat",
+        "csi addons",
+        "cube engine development",
+        "deckhouse",
+        "deploykf",
+        "development of kubernetes like control planes",
+        "dex idp",
+        "dragonflyoss",
+        "eksctl io",
+        "falco",
+        "fluid cloudnative",
+        "flux cd project",
+        "gardener",
+        "gitops community",
+        "gluster",
+        "gluster org",
+        "hami project",
+        "hwameistor",
+        "inlets",
+        "inspektor gadget",
+        "isovalent",
+        "isovalent at cisco",
+        "isovalent head of docs kubernetes chair emeritus",
+        "istio",
+        "jaeger",
+        "jaeger distributed tracing platform",
+        "k s io",
+        "k s io rancher suse",
+        "k8s io",
+        "karmada io",
+        "keda",
+        "kedify",
+        "keptn",
+        "kmesh",
+        "knative",
+        "knative extensions",
+        "konflux ci",
+        "koordinator sh",
+        "kserve",
+        "ksonnet",
+        "kuadrant",
+        "kuasar",
+        "kube incubator",
+        "kube object storage",
+        "kube queue",
+        "kube rs",
+        "kubeedge",
+        "kubefleet",
+        "kubeflow",
+        "kubeflow incubator",
+        "kubegene",
+        "kubermatic",
+        "kubernetes",
+        "kubernetes analysis",
+        "kubernetes austin",
+        "kubernetes clients",
+        "kubernetes cncf upbound",
+        "kubernetes csi",
+        "kubernetes incubator retired",
+        "kubernetes manifests",
+        "kubernetes meetup novice tokyo",
+        "kubernetes microsoft azure",
+        "kubernetes monitoring",
+        "kubernetes native data platform",
+        "kubernetes nightly",
+        "kubernetes preupgrade checker",
+        "kubernetes retired",
+        "kubernetes sigs",
+        "kubernetes tubitv",
+        "kubernetes up and running",
+        "kubeskills",
+        "kubesphere",
+        "kubespray",
+        "kubevela",
+        "kubevious",
+        "kubevirt",
+        "kubewharf",
+        "kubic project",
+        "kubicorn",
+        "kudo",
+        "kurator dev",
+        "kwok ci",
+        "learnkube",
+        "linkerd",
+        "litmus chaos",
+        "litmuschaos",
+        "loodse",
+        "meshery",
+        "minder",
+        "moby",
+        "nephio",
+        "netbox",
+        "netbox labs",
+        "network service mesh",
+        "oauth proxy",
+        "odigos",
+        "odigos io",
+        "okd",
+        "okd cookbook",
+        "open application model",
+        "open cluster management",
+        "open container initiative",
+        "open data hub",
+        "opencensus",
+        "opencost",
+        "openebs",
+        "openelb",
+        "openfaas",
+        "openfaas incubator",
+        "openfeature",
+        "openfunction",
+        "opengitops",
+        "openkruise",
+        "openshift",
+        "openshift eng",
+        "openshift kni",
+        "openshift metal",
+        "openshift metalkube",
+        "opentelemetry cncf",
+        "openyurt",
+        "operator framework",
+        "parca",
+        "pipecd",
+        "pixelmachinist",
+        "plural",
+        "pluralsh",
+        "polar signals",
+        "polarsignals",
+        "porter",
+        "project atomic",
+        "project calico",
+        "project codeflare",
+        "project contour",
+        "projectcalico",
+        "projectherophilus",
+        "prometheus",
+        "prometheus monitoring community",
+        "prometheus monitoring mixins",
+        "promitor",
+        "protobom",
+        "px autopilot",
+        "rancher",
+        "rancher labs",
+        "rex ray",
+        "rook",
+        "rootless containers",
+        "second state",
+        "secure kubernetes",
+        "service mesh interface smi",
+        "servicemesher",
+        "shipwright",
+        "sidero labs",
+        "spectro cloud",
+        "spiffe",
+        "spinkube",
+        "stolostron",
+        "submariner",
+        "subtrace",
+        "taichi dev kubernetes",
+        "tekton",
+        "tencent alibaba kubernetes",
+        "tencentcloud kubernetes",
+        "thanos",
+        "thanos community",
+        "the opendaylight project",
+        "tigera",
+        "tikv",
+        "tikv project",
+        "tkestack",
+        "toolbx images",
+        "topolvm project",
+        "traefik",
+        "traefik labs",
+        "u root",
+        "updatecli",
+        "used to work for kubesphere qihoo",
+        "velero io",
+        "virtual kubelet",
+        "vitess",
+        "volcano",
+        "wasmedge runtime",
+        "weaveworks"
+    ],
+    "cloudflare": [],
+    "cloudfoundry": [
+        "cloud foundry community",
+        "cloud foundry incubator",
+        "pivotal cloud foundry"
+    ],
+    "cloudnative": [
+        "cloud native ai",
+        "cloud native application bundles",
+        "cloud native architecture community",
+        "cloud native books",
+        "cloud native brasil",
+        "cloud native community china",
+        "cloud native computing foundation (cncf)",
+        "cloud native computing foundation cncf",
+        "cloud native istanbul",
+        "cloud native latin america",
+        "cloud native london",
+        "cloud native nordics",
+        "cloud native rejekts",
+        "cloud native taiwan user group",
+        "cncf jp",
+        "cncf kubernetes",
+        "cncf linuxfoundation",
+        "cncf maintainers",
+        "cncf technical advisory groups"
+    ],
+    "clowdhaus": [
+        "clowd haus"
+    ],
+    "cnrs": [
+        "cnrs lmf"
+    ],
+    "cnu": [
+        "cnulug",
+        "cnuopensource"
+    ],
+    "cockroachlabs": [],
+    "codecentric": [
+        "codecentric ag"
+    ],
+    "coinbase": [
+        "coinbase tenable accurics infracloud litmuschaos openebs"
+    ],
+    "comcast": [
+        "boingo wireless"
+    ],
+    "confighub": [
+        "confighub kubecon",
+        "confighubai"
+    ],
+    "controlplane": [
+        "controlplaneio"
+    ],
+    "cornell": [
+        "cornell university"
+    ],
+    "cosmo consult": [
+        "cosmoconsult"
+    ],
+    "credit karma": [
+        "creditkarma"
+    ],
+    "cubyte": [
+        "cubyte oss"
+    ],
+    "daocloud": [
+        "daocloud co shanghai",
+        "daocloud opensource"
+    ],
+    "datadog": [
+        "datadoghq"
+    ],
+    "death by escalator": [
+        "deathbyescalator"
+    ],
+    "defense unicorns": [
+        "defenseunicorns",
+        "zarf dev"
+    ],
+    "deis": [
+        "deis labs"
+    ],
+    "dell": [
+        "dell emc"
+    ],
+    "deno": [
+        "deno land"
+    ],
+    "deutsche boerse": [
+        "deutsche b rse group",
+        "deutsche boerse dev"
+    ],
+    "devopsdays": [
+        "devops days denver"
+    ],
+    "digitalocean": [
+        "digitalocean packages"
+    ],
+    "ditto": [
+        "getditto",
+        "https www ditto live"
+    ],
+    "dockd": [
+        "d dl ck",
+        "dead ck"
+    ],
+    "docker": [
+        "docker archive",
+        "docker captains",
+        "docker official images",
+        "docker samples",
+        "go docker"
+    ],
+    "eclipse foundation": [
+        "ceylon",
+        "jakarta ee",
+        "vert x"
+    ],
+    "ecma international": [
+        "ecma tc"
+    ],
+    "elegant tw": [
+        "elegant"
+    ],
+    "elyra": [
+        "elyra ai toolkit"
+    ],
+    "empowerops": [
+        "empower operations"
+    ],
+    "encore dev labs": [
+        "encoredevlabs"
+    ],
+    "epic games": [
+        "epicgames"
+    ],
+    "epitech": [
+        "epitech and rust lang"
+    ],
+    "ericsson": [
+        "ericsson ab",
+        "ericsson software technologies"
+    ],
+    "esrlabs": [
+        "esr labs ag"
+    ],
+    "etcd": [
+        "etcd io"
+    ],
+    "evident solutions": [
+        "evidentsolutions"
+    ],
+    "externalsecrets": [
+        "external secrets"
+    ],
+    "facebook": [
+        "facebook instagram",
+        "meta",
+        "meta platforms",
+        "whatsapp"
+    ],
+    "fastapi": [
+        "fastapi cloud",
+        "fastapilabs"
+    ],
+    "fedora": [
+        "fedora cloud sig",
+        "fedora eln",
+        "fedora infrastructure",
+        "fedora iot",
+        "fedora livecd tools"
+    ],
+    "fermyon": [
+        "fermyon technologies",
+        "spinframework"
+    ],
+    "formbound": [
+        "formbound ab"
+    ],
+    "freebsd": [
+        "freebsd cloud tech",
+        "the freebsd project rabbitmq"
+    ],
+    "freexian": [
+        "freexian debian ubuntu"
+    ],
+    "ftsrg": [
+        "bme mit ftsrg automated software engineering homework",
+        "ftsrg edu"
+    ],
+    "fujitsu": [
+        "fnst",
+        "fujitsu fnst",
+        "fujitsu limited"
+    ],
+    "furiosa": [
+        "furiosa ai kaist cp",
+        "furiosaai"
+    ],
+    "g-research": [
+        "g research",
+        "g research contributor armada testkube"
+    ],
+    "getsentry": [
+        "getsentry sentry io"
+    ],
+    "giant swarm": [
+        "giantswarm"
+    ],
+    "gitlab": [
+        "gitlabhq"
+    ],
+    "godaddy": [
+        "software engineer v godaddy"
+    ],
+    "golang": [
+        "golang guadalajara",
+        "golang taiwan",
+        "golangvan"
+    ],
+    "google": [
+        "api ai",
+        "chromium",
+        "deepmind",
+        "firebase",
+        "fitbit",
+        "formerly google",
+        "gdg on campus dgu",
+        "gdg pisa google developer group",
+        "gmail",
+        "go",
+        "google chrome",
+        "google cloud",
+        "google cloud platform",
+        "google developer group italia",
+        "google groups",
+        "google kubernetes",
+        "google youtube",
+        "googlecloudplatform",
+        "googlecontainertools",
+        "googlemail",
+        "googlers",
+        "looker",
+        "mandrill",
+        "nest",
+        "waze",
+        "youtube"
+    ],
+    "gradle": [
+        "gradle technologies",
+        "gradleup",
+        "gradleweaver"
+    ],
+    "grafana": [
+        "grafana labs",
+        "grafana operator",
+        "staff engineer grafana"
+    ],
+    "harvard university": [
+        "center for astrophysics harvard smithsonian",
+        "harvard",
+        "smithsonian"
+    ],
+    "hashicorp": [
+        "hashintel blockprotocol",
+        "hashistack for you",
+        "vault on kubernetes"
+    ],
+    "hathora": [
+        "hathora dev"
+    ],
+    "helsing": [
+        "helsing ai"
+    ],
+    "hetzner": [
+        "hetzner cloud",
+        "hetznercloud"
+    ],
+    "hitachi": [
+        "hitachi high tech canada",
+        "hitachi vantara",
+        "hitachivantara"
+    ],
+    "hivemq": [
+        "hivemq enterprise mqtt platform"
+    ],
+    "hkust": [
+        "hkust teamhartex usthing zigide"
+    ],
+    "homeassistant": [
+        "home assistant"
+    ],
+    "hpe": [
+        "hpe nimble storage",
+        "hpe storage"
+    ],
+    "huawei": [
+        "huawei cloudnative",
+        "huawei dresden research center",
+        "huawei technologies",
+        "huawei technologies co",
+        "huaweiclouddeveloper"
+    ],
+    "hudson trading": [
+        "hudson river trading"
+    ],
+    "humy": [
+        "humy ai"
+    ],
+    "hydraulic": [
+        "hydraulic software"
+    ],
+    "ibm": [
+        "ansible",
+        "ansible collections",
+        "automation for openshift on ibm power platform",
+        "coreos",
+        "glusterfs",
+        "hit ibm tech center",
+        "ibm cloud functions",
+        "ibm contribs",
+        "ibm india pvt",
+        "ibm research",
+        "ibm research japan",
+        "inktank",
+        "international business machines",
+        "quadrant",
+        "quay",
+        "red hat",
+        "red hat ansible",
+        "red hat communities of practice",
+        "red hat demo platform",
+        "red hat emerging technologies",
+        "red hat fit ctu",
+        "red hat government",
+        "red hat hack fest",
+        "red hat healthcare",
+        "red hat hpc",
+        "red hat ibm",
+        "red hat iot",
+        "red hat israel",
+        "red hat nfvpe",
+        "red hat observability",
+        "red hat openshift",
+        "red hat openshift online",
+        "red hat partner solutions",
+        "red hat performance engineering",
+        "red hat public sector product",
+        "red hat redhatofficial",
+        "red hat s openshift virtualization upstream supplementals",
+        "red hat storage",
+        "red hat vllm project",
+        "redhat",
+        "redhat ci",
+        "redhatinsights",
+        "redhatofficial",
+        "redhatworkshops"
+    ],
+    "ibm red hat": [
+        "ibm india pvt red hat",
+        "ibm isdl red hat",
+        "ibm red hat fedora gluster nfs ganesha centos storage sig and personal projects"
+    ],
+    "idiap": [
+        "idiap research institute"
+    ],
+    "ifm": [
+        "ifm software",
+        "senior software engineer ifm"
+    ],
+    "igalia": [
+        "igalia muxup",
+        "igalia s l"
+    ],
+    "ii": [
+        "ii cookbooks",
+        "ii grupp",
+        "ii nz"
+    ],
+    "iit roorkee": [
+        "models and robotics section iit roorkee",
+        "team robocon iitr"
+    ],
+    "incquery labs": [
+        "incquerylabs ftsrg"
+    ],
+    "influxdata": [],
+    "infomaniak": [
+        "infomaniak amande previously beepiz suivideflotte net"
+    ],
+    "infracloud": [
+        "infracloud technologies",
+        "infracloudio kastenhq"
+    ],
+    "inria": [
+        "inria institut de math matiques de bordeaux",
+        "inrialpes"
+    ],
+    "intel": [
+        "intellabs",
+        "intellection"
+    ],
+    "invited expert": [
+        "invited expert babel"
+    ],
+    "itmouniversity": [
+        "itmo university ctlab"
+    ],
+    "jboss": [
+        "jboss capedwarf",
+        "jboss integration",
+        "jbossas"
+    ],
+    "jenkins": [
+        "jenkins x"
+    ],
+    "jetbrains": [
+        "intellij rust",
+        "jetbrains research",
+        "qodana demo version",
+        "tinkering jetbrains",
+        "vorpal jetbrains research"
+    ],
+    "jnicklas": [
+        "jnicklas consulting"
+    ],
+    "jolin": [
+        "jolin io"
+    ],
+    "jozu": [
+        "jozu ai"
+    ],
+    "jupyter": [
+        "jupyter ai contrib",
+        "jupyterlab"
+    ],
+    "kasten": [
+        "kasten by veeam igeek"
+    ],
+    "kinvolk": [
+        "kinvolk microsoft"
+    ],
+    "kotlin": [
+        "belarus kotlin user group",
+        "kotlin android open source",
+        "kotlin android open source flutter dart open source",
+        "kotlin community",
+        "kotlin for telegram libraries",
+        "kotlin fosdem",
+        "kotlingang",
+        "san diego kotlin user group"
+    ],
+    "leroy merlin": [
+        "leroy merlin spain",
+        "leroymerlin"
+    ],
+    "lido": [
+        "lidofinance"
+    ],
+    "linux foundation": [
+        "academy software foundation",
+        "act",
+        "arch linux",
+        "arch linux archlinux",
+        "archlinux",
+        "asahi linux",
+        "cloud custodian",
+        "cloudevents",
+        "comptia",
+        "delta lake",
+        "fido alliance",
+        "flatcar container linux",
+        "graphql community",
+        "hyperledger labs",
+        "inclusive naming initiative",
+        "linux",
+        "linux doku",
+        "linux foundation training content",
+        "linux machines lima",
+        "linuxfoundation",
+        "march linux",
+        "open source security foundation openssf",
+        "open virtual network",
+        "openapi initiative golang toolkit",
+        "openapi tools",
+        "os climate",
+        "sigstore",
+        "slsa framework",
+        "tock"
+    ],
+    "llm d": [
+        "llm d incubation"
+    ],
+    "lunarenergy": [
+        "lun energy",
+        "lunar energy"
+    ],
+    "lwjgl": [
+        "lwjgl continuous integration",
+        "lwjglx"
+    ],
+    "lyft": [
+        "envoy proxy cncf"
+    ],
+    "mam dev": [
+        "and mam dev"
+    ],
+    "mamoe": [
+        "mamoe technologies"
+    ],
+    "matplotlib": [
+        "matplotlib developers"
+    ],
+    "mercedesbenz": [
+        "mercedes benz",
+        "mercedes benz group"
+    ],
+    "microsoft": [
+        "activision blizzard",
+        "azure",
+        "azure deprecation notices",
+        "azure kubernetes service long term support project",
+        "azure microsoft",
+        "azure samples",
+        "dotnetio",
+        "github",
+        "github beta",
+        "github campus experts",
+        "github for government",
+        "github next",
+        "github security bug bounty",
+        "github stars",
+        "gnome github mirror",
+        "linkedin",
+        "microsoft azure",
+        "microsoft docs",
+        "microsoft github",
+        "microsoft kinvolk",
+        "microsoft mvps",
+        "mojang",
+        "npm",
+        "nuget",
+        "skype",
+        "typescript",
+        "ukrainians on github",
+        "yammer"
+    ],
+    "minskpython": [
+        "minsk python community"
+    ],
+    "mistcommunity": [
+        "mist community"
+    ],
+    "mit": [
+        "massachusetts institute of technology",
+        "mit math department",
+        "mitre"
+    ],
+    "mitsubishi": [
+        "mipt general physics"
+    ],
+    "mofb": [
+        "was chaitin was bilibili"
+    ],
+    "mongodb": [
+        "https www mongodb com atlas"
+    ],
+    "monzo": [
+        "monzo bank"
+    ],
+    "mozilla": [
+        "mozilla campus clubs"
+    ],
+    "nasa": [],
+    "nationaltaiwanuniversity": [
+        "national taiwan university ph d student"
+    ],
+    "nedap": [
+        "nedap n v"
+    ],
+    "netfpga": [
+        "netfpga github organization"
+    ],
+    "netty": [
+        "the netty project"
+    ],
+    "newyorktimes": [
+        "nytimes",
+        "the new york times"
+    ],
+    "newyorkuniversity": [
+        "new york university"
+    ],
+    "nitk": [
+        "nitk open source group"
+    ],
+    "nix": [
+        "nix clan",
+        "nix community projects",
+        "nix nixpkgs nixos",
+        "nix rust",
+        "nixcon the community conference about nix nixos"
+    ],
+    "nodejs": [
+        "node js",
+        "node js knockout"
+    ],
+    "nordix": [
+        "nordix metal"
+    ],
+    "northbronson": [
+        "north bronson software"
+    ],
+    "northcarolinastateuniversity": [
+        "ncsu",
+        "north carolina state university"
+    ],
+    "nymex": [
+        "nymexdata circleci"
+    ],
+    "nyu": [
+        "nyu it",
+        "nyu rts",
+        "nyu tandon school of engineering",
+        "nyuhpc",
+        "vida nyu"
+    ],
+    "okkur": [
+        "okkur labs",
+        "okkur rekkur"
+    ],
+    "okta": [
+        "oktadev"
+    ],
+    "openhatch": [
+        "openhatch organization has wound down this is an archive"
+    ],
+    "openjs foundation": [
+        "appcelerator",
+        "bower",
+        "grunt",
+        "jquery",
+        "node forward",
+        "open js",
+        "openjs",
+        "webpack"
+    ],
+    "openmandriva": [
+        "openmandriva association",
+        "openmandriva software"
+    ],
+    "oracle": [
+        "dyn",
+        "graalvm",
+        "hudson",
+        "java",
+        "mysql",
+        "netsuite",
+        "openjdk",
+        "oracle labs",
+        "peoplesoft"
+    ],
+    "oxide computer company": [
+        "oxidecomputer"
+    ],
+    "palo alto networks": [
+        "bridgecrew",
+        "cider security",
+        "demisto",
+        "twistlock"
+    ],
+    "penn state university": [
+        "psu oit"
+    ],
+    "pingcap": [
+        "pingcap rust lang"
+    ],
+    "pitt": [
+        "university of pittsburgh"
+    ],
+    "pmmp": [
+        "pmmp repo"
+    ],
+    "pnnl": [
+        "pacific northwest national laboratory"
+    ],
+    "pocketmine": [
+        "pocketmine plugins"
+    ],
+    "poggit": [
+        "poggit orphanage"
+    ],
+    "polars": [
+        "pola rs"
+    ],
+    "preferrednetworks": [
+        "pfnet research",
+        "preferred networks",
+        "preferred networks pfnet"
+    ],
+    "princeton": [
+        "princeton university"
+    ],
+    "proton": [
+        "proton ag",
+        "protonmail"
+    ],
+    "purdue university": [
+        "purdue"
+    ],
+    "pydantic": [],
+    "pypy": [
+        "pypy baroquesoftware"
+    ],
+    "python": [
+        "from python import podcast",
+        "python academy",
+        "python charmers",
+        "python compilers workshop",
+        "python for data",
+        "python gssapi",
+        "python india",
+        "python packaging authority",
+        "python software foundation",
+        "python spyder ide star fleet tours",
+        "python trio",
+        "python x y",
+        "pythonapocrypha",
+        "pythoncharmers",
+        "pythoncraft",
+        "pythonware"
+    ],
+    "qiskit": [
+        "qiskit advocate"
+    ],
+    "quansight": [
+        "quansight labs",
+        "quansight openteams"
+    ],
+    "rackspace": [
+        "rackspace titan"
+    ],
+    "ray project": [
+        "ray project apache"
+    ],
+    "reactivedevelopment": [
+        "reactive development"
+    ],
+    "reactnative": [
+        "react native community"
+    ],
+    "replayio": [
+        "replayio previously babel mozilla and firefox devtools"
+    ],
+    "replicated": [
+        "replicated com"
+    ],
+    "rkt": [
+        "rkt archived see https github com rkt rkt issues"
+    ],
+    "ruijl": [
+        "ruijl research"
+    ],
+    "rust": [
+        "rust foundation",
+        "rust foundation contractor",
+        "rust lang",
+        "rust lang rust tw",
+        "rust leipzig",
+        "rust nyc",
+        "rust osdev",
+        "rust project",
+        "rust project rustnl hexcat",
+        "rust vmm",
+        "rustaudio",
+        "rustfoundation"
+    ],
+    "rwth": [
+        "rwth aachen university",
+        "rwth acs"
+    ],
+    "salesforce": [
+        "clicksoftware",
+        "demandware",
+        "heroku",
+        "mulesoft",
+        "sfxd the salesforce discord exchange",
+        "slack",
+        "slack rs",
+        "tableau"
+    ],
+    "samoe": [],
+    "samsung": [
+        "samsung electronics co",
+        "samsung research america",
+        "samsung srr",
+        "samsungslav"
+    ],
+    "sap": [
+        "sap cloudfoundry",
+        "sap customer experience",
+        "sap samples",
+        "sap se",
+        "sap signavio"
+    ],
+    "satispay": [
+        "satispay tech"
+    ],
+    "scisemi": [
+        "sci semi"
+    ],
+    "secureai": [
+        "secure ai"
+    ],
+    "seed messaging": [
+        "seed messaging platform"
+    ],
+    "seequ": [
+        "seequ oy"
+    ],
+    "shopee": [
+        "shopee ex alibaba ex baidu"
+    ],
+    "siemens": [],
+    "siteforge": [
+        "siteforge io lumina gov"
+    ],
+    "sjtu": [
+        "sjtu sail",
+        "sjtu yj",
+        "sjtug"
+    ],
+    "skytable": [],
+    "slint": [
+        "slint ui"
+    ],
+    "smartx": [
+        "smartx com"
+    ],
+    "snapp": [
+        "snapp cab incubators"
+    ],
+    "snowflake": [
+        "snowflakedb"
+    ],
+    "softwareengineeringlabzju": [
+        "software engineering lab of zhejiang university"
+    ],
+    "soloio": [
+        "solo",
+        "solo io"
+    ],
+    "sony": [
+        "bungie",
+        "insomniac games",
+        "playstation",
+        "sony interactive entertainment",
+        "sony ros kubernetes kubeedge cilium haivision"
+    ],
+    "space dynamics laboratory": [
+        "space dynamics laboratory and nist"
+    ],
+    "spotify": [
+        "backstage"
+    ],
+    "square": [
+        "cash app",
+        "squareup"
+    ],
+    "srmse": [
+        "srmse v"
+    ],
+    "stackable": [
+        "stackabletech"
+    ],
+    "stanford university": [
+        "stanford",
+        "stanford crowd research"
+    ],
+    "stormmq": [
+        "stormmq it limited"
+    ],
+    "sujitech": [
+        "mask network"
+    ],
+    "supermoon": [
+        "supermoon ai"
+    ],
+    "suse": [
+        "suse linux products",
+        "suse rancher",
+        "suse software solutions spain sl"
+    ],
+    "swift": [
+        "swift mail",
+        "swift on server",
+        "swiftjava",
+        "swiftkit",
+        "swiftlang",
+        "swiftonfile",
+        "the swift programming language"
+    ],
+    "sysart": [
+        "sysart s r o"
+    ],
+    "tailscale": [],
+    "tasemulators": [
+        "tas emulators on github"
+    ],
+    "tencent": [
+        "tencentcloudcontainerteam"
+    ],
+    "the forays": [
+        "the forays team"
+    ],
+    "the lake": [
+        "the league of extraordinary packages"
+    ],
+    "the omni group": [
+        "omni"
+    ],
+    "the prospective company": [
+        "the prospective co"
+    ],
+    "the universal os": [
+        "debbuild",
+        "debian"
+    ],
+    "the yaml project": [
+        "yaml"
+    ],
+    "tismer": [
+        "tismer software consulting"
+    ],
+    "titanous": [],
+    "tngtechnology": [
+        "tng technology consulting"
+    ],
+    "torproject": [
+        "the tor project"
+    ],
+    "toyota": [
+        "woven by toyota"
+    ],
+    "tudelft": [
+        "tu delft",
+        "tudelft pl"
+    ],
+    "twincl": [],
+    "two sigma": [
+        "tsg",
+        "two sigma investments",
+        "twosigma"
+    ],
+    "uber": [
+        "careem",
+        "postmates"
+    ],
+    "ubuntu": [
+        "canonical",
+        "canonical debate lab",
+        "canonicalltd"
+    ],
+    "umbrella code": [
+        "umbrellacode"
+    ],
+    "university of illinois at urbana champaign": [
+        "uiuc",
+        "xlab uiuc"
+    ],
+    "university of stuttgart": [
+        "ipvs university of stuttgart"
+    ],
+    "university of toronto": [
+        "uoft",
+        "uoft computer vision"
+    ],
+    "universityofcalifornia": [
+        "berkeley",
+        "berkeley deep learning",
+        "berkeley student cooperative network repositories",
+        "ucb dl",
+        "ucb sec arch",
+        "ucdavis",
+        "university of california berkeley",
+        "university of california davis"
+    ],
+    "universityofdayton": [
+        "university of dayton research institute"
+    ],
+    "universityofhelsinki": [
+        "university of helsinki"
+    ],
+    "universityofmichigan": [
+        "umich",
+        "university of michigan"
+    ],
+    "universityofwaterloo": [
+        "university of waterloo",
+        "uwaterloo"
+    ],
+    "upbound": [
+        "upbound kubernetes"
+    ],
+    "utilitywarehouse": [
+        "utilitywarehouse uw labs",
+        "uw labs",
+        "uw utility warehouse"
+    ],
+    "uw": [
+        "uw amateur radio club",
+        "uw cse",
+        "uw hackers"
+    ],
+    "viam": [
+        "viamrobotics"
+    ],
+    "victoriametrics": [],
+    "vivosys": [
+        "vivosys redocksoft ritzyed innertech"
+    ],
+    "volkswagen": [
+        "cariad se a volkswagen group company",
+        "volkswagen vocs"
+    ],
+    "wasmer": [
+        "wasmer io"
+    ],
+    "webkit": [
+        "the webkit open source project"
+    ],
+    "wellposed": [
+        "wellposed com"
+    ],
+    "westerndigital": [
+        "western digital"
+    ],
+    "whatwg": [
+        "cloudflare whatwg"
+    ],
+    "wingware": [
+        "wingware python ide"
+    ],
+    "wiredash": [
+        "wiredash com"
+    ],
+    "wiseai": [
+        "wiseaidotdev opensass"
+    ],
+    "witchof": [
+        "witchoflight"
+    ],
+    "wlan slovenija": [
+        "sledilnik org"
+    ],
+    "worldcoin": [],
+    "worldwidewebconsortium": [
+        "w c technical architecture group",
+        "world wide web consortium"
+    ],
+    "wpengine": [
+        "wp engine"
+    ],
+    "x": [
+        "twitter",
+        "x twitter",
+        "xai"
+    ],
+    "xemacs": [
+        "xemacs org and gnu mailman"
+    ],
+    "xgeeks": [
+        "xgeekshq"
+    ],
+    "yahoo": [
+        "yahoo japan"
+    ],
+    "yandex": [
+        "yanex"
+    ],
+    "zalando": [
+        "stups by zalando",
+        "the zalando incubator",
+        "zalando se"
+    ],
+    "zedindustries": [
+        "zed industries"
+    ],
+    "zettascale": [
+        "zettascalelabs"
+    ],
+    "zidif": [
+        "zidifcloud"
+    ]
+}

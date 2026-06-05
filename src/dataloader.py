@@ -1,7 +1,7 @@
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple, Sequence
+from typing import Sequence
 
 import polars as pl
 
@@ -85,21 +85,6 @@ class CommentSchema:
     comment_on_comment_id: pl.Int64
     created_at: pl.Datetime
     content: pl.String
-
-
-# Explicit container type for intermediate step
-class _MergedProjectData(NamedTuple):
-    project: pl.DataFrame
-    proposals: pl.DataFrame
-    proposal_revisions: pl.DataFrame
-    proposal_revision_authors: pl.DataFrame
-    proposal_status: pl.DataFrame
-    comments: pl.DataFrame
-    persons: pl.DataFrame
-    person_identifiers: pl.DataFrame
-    organisations: pl.DataFrame
-    affiliations: pl.DataFrame
-    related_proposals: pl.DataFrame
 
 
 @dataclass
@@ -250,57 +235,66 @@ def _safe_read_table(conn: sqlite3.Connection, table_name: str) -> pl.DataFrame:
     return df
 
 
-def _slice_data_by_project(
-    project_data: _MergedProjectData,
+def _extract_contexts_from_db(
+    conn: sqlite3.Connection,
     max_proposals: int | None = None,
-    seed: int | None = 42,  # Added a seed for reproducible test runs
+    seed: int | None = 42,
 ) -> list[IndividualProjectContext]:
-    """Traces relational tables back to a root project_id and splits them into clean contexts."""
+    """Extracts and slices individual project contexts out of a single database connection."""
 
-    base_proposals = project_data.proposals
+    # 1. Read the necessary driving tables first
+    raw_proposals = _safe_read_table(conn, "Proposal")
+    if raw_proposals.is_empty():
+        return []
 
-    # 1. Randomly sample up to max_proposals *per project*
+    # Apply sampling per project directly within this DB's scope
+    base_proposals = raw_proposals
     if max_proposals is not None:
         base_proposals = (
-            base_proposals
-            # Shuffle the entire dataframe randomly
-            .sample(fraction=1.0, shuffle=True, seed=seed)
-            # Group by project and take the first N sliced rows of that group
+            base_proposals.sample(fraction=1.0, shuffle=True, seed=seed)
             .group_by("project_id", maintain_order=True)
             .head(max_proposals)
         )
 
-    # 2. Get the unique projects that made the cut
     allowed_project_ids = base_proposals.select("project_id").unique()
+
+    raw_projects = _safe_read_table(conn, "Project")
     unique_projects = (
-        project_data.project.join(allowed_project_ids, on="project_id", how="inner")
+        raw_projects.join(allowed_project_ids, on="project_id", how="inner")
         .select(["project_id", "project_name"])
         .unique()
     )
 
+    if unique_projects.is_empty():
+        return []
+
+    # 2. Lazy load remaining tables for this database
+    raw_revisions = _safe_read_table(conn, "ProposalRevision")
+    raw_revision_authors = _safe_read_table(conn, "ProposalRevisionAuthor")
+    raw_comments = _safe_read_table(conn, "Comment")
+    raw_status = _safe_read_table(conn, "ProposalStatus")
+    raw_related_proposals = _safe_read_table(conn, "RelatedProposal")
+
+    raw_persons = _safe_read_table(conn, "Person")
+    raw_person_identifiers = _safe_read_table(conn, "PersonIdentifier")
+    raw_affiliations = _safe_read_table(conn, "Affiliation")
+    raw_organisations = _safe_read_table(conn, "Organisation")
+
     contexts = []
 
+    # 3. Slice tables strictly belonging to the projects found inside this database
     for row in unique_projects.iter_rows(named=True):
         p_id, p_name = row["project_id"], row["project_name"]
 
-        # Project table filter
-        proj = project_data.project.filter(pl.col("project_id") == p_id)
-
-        # Proposal filtering tied strictly to our randomly sampled subset
+        proj = raw_projects.filter(pl.col("project_id") == p_id)
         proposals = base_proposals.filter(pl.col("project_id") == p_id)
+        revisions = raw_revisions.filter(pl.col("project_id") == p_id)
+        revision_authors = raw_revision_authors.filter(pl.col("project_id") == p_id)
+        comments = raw_comments.filter(pl.col("project_id") == p_id)
+        status = raw_status.filter(pl.col("project_id") == p_id)
+        related_proposals = raw_related_proposals.filter(pl.col("project_id") == p_id)
 
-        # Get by project id
-        revisions = project_data.proposal_revisions.filter(pl.col("project_id") == p_id)
-        revision_authors = project_data.proposal_revision_authors.filter(
-            pl.col("project_id") == p_id
-        )
-        comments = project_data.comments.filter(pl.col("project_id") == p_id)
-        status = project_data.proposal_status.filter(pl.col("project_id") == p_id)
-        related_proposals = project_data.related_proposals.filter(
-            pl.col("project_id") == p_id
-        )
-
-        # Get by person id
+        # Trace dynamic relationships (People)
         project_people_ids = (
             pl.concat(
                 [
@@ -311,23 +305,18 @@ def _slice_data_by_project(
             .drop_nulls()
             .unique()
         )
-        people = project_data.persons.join(
-            project_people_ids, on="person_id", how="inner"
-        )
-        person_idents = project_data.person_identifiers.join(
-            project_people_ids, on="person_id", how="inner"
-        )
-        affils = project_data.affiliations.join(
-            project_people_ids, on="person_id", how="inner"
-        )
 
-        # Get by organisation id
-        project_organisation_ids = (
-            affils.select(pl.col("organisation_id").alias("organisation_id"))
-            .drop_nulls()
-            .unique()
+        people = raw_persons.join(project_people_ids, on="person_id", how="inner")
+        person_idents = raw_person_identifiers.join(
+            project_people_ids, on="person_id", how="inner"
         )
-        orgs = project_data.organisations.join(
+        affils = raw_affiliations.join(project_people_ids, on="person_id", how="inner")
+
+        # Trace dynamic relationships (Organisations)
+        project_organisation_ids = (
+            affils.select(pl.col("organisation_id")).drop_nulls().unique()
+        )
+        orgs = raw_organisations.join(
             project_organisation_ids, on="organisation_id", how="inner"
         )
 
@@ -349,45 +338,29 @@ def _slice_data_by_project(
             )
         )
 
-    contexts = sorted(contexts, key=lambda c: c.project_id)
     return contexts
 
 
 def load_all_projects(
-    db_paths: Sequence[Path], max_proposals: int | None
+    db_paths: Sequence[Path], max_proposals: int | None, seed: int | None = 42
 ) -> list[IndividualProjectContext]:
-    """Reads multiple matching SQLite databases, merges data, and slices into isolated project contexts."""
+    """Reads multiple matching SQLite databases sequentially and constructs isolated project contexts directly."""
     if not db_paths:
         raise ValueError("Must provide at least one database path.")
 
-    tables = {k: [] for k in TABLE_SCHEMAS.keys()}
+    all_contexts = []
 
-    # Extract raw dataframes sequentially from each file
+    # Extract clean contexts from each file individually
     for path in db_paths:
+        print(f"Processing database: {path}")
         conn = sqlite3.connect(str(path))
         try:
-            for table_name in tables.keys():
-                df = _safe_read_table(conn, table_name)
-                tables[table_name].append(df)
+            db_contexts = _extract_contexts_from_db(
+                conn, max_proposals=max_proposals, seed=seed
+            )
+            all_contexts.extend(db_contexts)
         finally:
             conn.close()
 
-    # Compile the database matrix diagonally
-    merged_data = _MergedProjectData(
-        project=pl.concat(tables["Project"], how="diagonal"),
-        proposals=pl.concat(tables["Proposal"], how="diagonal"),
-        proposal_revisions=pl.concat(tables["ProposalRevision"], how="diagonal"),
-        proposal_revision_authors=pl.concat(
-            tables["ProposalRevisionAuthor"], how="diagonal"
-        ),
-        proposal_status=pl.concat(tables["ProposalStatus"], how="diagonal"),
-        comments=pl.concat(tables["Comment"], how="diagonal"),
-        persons=pl.concat(tables["Person"], how="diagonal"),
-        person_identifiers=pl.concat(tables["PersonIdentifier"], how="diagonal"),
-        organisations=pl.concat(tables["Organisation"], how="diagonal"),
-        affiliations=pl.concat(tables["Affiliation"], how="diagonal"),
-        related_proposals=pl.concat(tables["RelatedProposal"], how="diagonal"),
-    )
-
-    # Return structured isolated array
-    return _slice_data_by_project(merged_data, max_proposals=max_proposals)
+    # Final sort across all extracted projects
+    return sorted(all_contexts, key=lambda c: c.project_id)

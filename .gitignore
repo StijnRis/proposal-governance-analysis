@@ -11,4 +11,5 @@ wheels/
 
 output/
 .env
-data/
+data/proposals
+data/github_cache
