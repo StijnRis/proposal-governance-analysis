@@ -2,14 +2,15 @@
 
 import datetime
 from pathlib import Path
+from src.statistics import generate_table_counts, show_basic_statistics
 
 from dotenv import load_dotenv
 
-from src.enhance_data.add_companies import enrich_project_contexts_with_companies
-from src.enhance_data.deduplicate_companies import merge_duplicate_companies_in_contexts
-from src.dataloader import load_all_projects
-from src.governance import show_governance_statistics
-from src.statistics import generate_table_counts, show_basic_statistics
+from dataloader import load_all_projects
+from enhance_data.add_companies import enrich_project_contexts_with_companies
+from enhance_data.merge_companies import merge_duplicate_companies_in_contexts
+from enhance_data.merge_people import merge_duplicate_people
+from governance import show_governance_statistics
 
 
 def main() -> None:
@@ -18,9 +19,9 @@ def main() -> None:
     load_dotenv()
 
     # Setup core operational path markers
-    data_dir = Path("data/proposals")
+    data_dir = Path("../data/proposals")
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_output_dir = Path("output")
+    base_output_dir = Path("../output")
     output_dir = base_output_dir / timestamp
 
     # Clean output dir of 2 or more runs ago
@@ -52,8 +53,9 @@ def main() -> None:
         )
 
     projects = load_all_projects(db_files, max_proposals=None)
+    projects = merge_duplicate_people(projects)
     projects = enrich_project_contexts_with_companies(projects)
-    projects = merge_duplicate_companies_in_contexts(projects)
+    projects = merge_duplicate_companies_in_contexts(projects, output_dir)
 
     generate_table_counts(projects, output_dir)
     show_basic_statistics(projects, output_dir)

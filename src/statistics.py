@@ -1,5 +1,3 @@
-"""Statistics computation and immediate visualization using Polars."""
-
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +7,7 @@ import matplotlib.pyplot as plt
 import polars as pl
 from tabulate import tabulate
 
-from src.dataloader import IndividualProjectContext
+from dataloader import IndividualProjectContext
 
 
 @dataclass
@@ -216,6 +214,7 @@ def _render_axis(ax: plt.Axes, df: pl.DataFrame, cfg: MetricConfig, title: str) 
         y_data = df.select(pl.col(cfg.y_col)).to_series().to_list()
         ax.bar(x_data, y_data, alpha=0.7, edgecolor="black")
         ax.tick_params(axis="x", rotation=45)
+        ax.set_xticks(range(len(x_data)))
         ax.set_xticklabels(x_data, rotation=45, ha="right", rotation_mode="anchor")
 
     ax.set_xlabel(cfg.xlabel, fontsize=10)

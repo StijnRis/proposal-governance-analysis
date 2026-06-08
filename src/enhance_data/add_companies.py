@@ -6,9 +6,10 @@ import urllib.request
 
 import polars as pl
 from diskcache import Cache
+from tldextract import tldextract
 from tqdm import tqdm
 
-from src.dataloader import (
+from dataloader import (
     TABLE_SCHEMAS,
     IndividualProjectContext,
 )
@@ -26,7 +27,7 @@ PUBLIC_DOMAINS = {
     "mail.com",
 }
 
-cache = Cache("data/github_cache")
+cache = Cache("../data/github_cache")
 
 
 # ==========================================
@@ -38,13 +39,18 @@ def _extract_email_domain_company(email: str) -> str | None:
     """Extracts a capitalized candidate organization from non-public corporate email domains."""
     if "@" not in email:
         return None
-    domain = email.split("@")[-1].lower()
-    if domain not in PUBLIC_DOMAINS and "." in domain:
-        return domain.split(".")[0].capitalize()
-    return None
+    domain_part = email.split("@")[-1].lower()
+    if domain_part in PUBLIC_DOMAINS:
+        return None
+
+    extracted = tldextract.extract(domain_part)
+    if extracted.domain:
+        if extracted.domain == "loewis":
+            print(f"⚠️ Detected 'loewis' domain in email '{email}'")
+        return extracted.domain
 
 
-def _execute_graphql_request(query: str) -> dict:
+def _execute_graphql_request(query: str, variables: dict | None = None) -> dict:
     """Handles the network transmission and rate-limiting wrapper for GitHub GraphQL API."""
     token = os.getenv("GITHUB_TOKEN")
     if not token:
@@ -52,9 +58,13 @@ def _execute_graphql_request(query: str) -> dict:
             "GitHub API token not found in environment variables (GITHUB_TOKEN)"
         )
 
+    payload = {"query": query}
+    if variables:
+        payload["variables"] = variables
+
     req = urllib.request.Request(
         "https://api.github.com/graphql",
-        data=json.dumps({"query": query}).encode("utf-8"),
+        data=json.dumps(payload).encode("utf-8"),
         headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -82,7 +92,7 @@ def _execute_graphql_request(query: str) -> dict:
 
     if "errors" in response_data:
         for error in response_data["errors"]:
-            if error["type"] == "NOT_FOUND":
+            if error.get("type") == "NOT_FOUND":
                 print(f"⚠️ No results found: {error['message']}")
                 continue
             else:
@@ -97,16 +107,24 @@ def _fetch_companies_graphql_batch(pending_emails: list[str]) -> dict[str, str |
     """Queries the GitHub GraphQL API for a fully packed batch of missing emails."""
     results = {}
     query_fragments = []
+    variables = {}
+    var_definitions = []
+
     for idx, email in enumerate(pending_emails):
-        escaped_query = json.dumps(f"{email} in:email")
+        var_name = f"email_query_{idx}"
+        var_definitions.append(f"${var_name}: String!")
+        variables[var_name] = f"{email} in:email"
+
         query_fragments.append(
-            f'email_{idx}: search(type: USER, query: "{escaped_query}", first: 1) {{ '
+            f"email_{idx}: search(type: USER, query: ${var_name}, first: 1) {{ "
             f"  nodes {{ ... on User {{ company }} }} "
             f"}}"
         )
 
-    graphql_query = f"query {{ {' '.join(query_fragments)} }}"
-    data_map = _execute_graphql_request(graphql_query)
+    graphql_query = (
+        f"query({', '.join(var_definitions)}) {{ {' '.join(query_fragments)} }}"
+    )
+    data_map = _execute_graphql_request(graphql_query, variables)
 
     for idx, email in enumerate(pending_emails):
         alias_key = f"email_{idx}"
@@ -152,6 +170,54 @@ def _fetch_companies_by_username_batch(
 
         cache.set(f"gh_company_user:{username}", "")
         results[username] = None
+
+    return results
+
+
+def _fetch_companies_by_fullname_batch(
+    pending_names: list[str],
+) -> dict[str, str | None]:
+    """Queries the GitHub GraphQL API for companies by full name using strongly-typed payload variables."""
+    results = {}
+    query_fragments = []
+    variables = {}
+    var_definitions = []
+
+    for idx, name in enumerate(pending_names):
+        var_name = f"name_query_{idx}"
+        var_definitions.append(f"${var_name}: String!")
+        variables[var_name] = f"{name} in:name"
+
+        query_fragments.append(
+            f"name_{idx}: search(type: USER, query: ${var_name}, first: 2) {{ "
+            f"  nodes {{ ... on User {{ company }} }} "
+            f"}}"
+        )
+
+    graphql_query = (
+        f"query({', '.join(var_definitions)}) {{ {' '.join(query_fragments)} }}"
+    )
+    data_map = _execute_graphql_request(graphql_query, variables)
+
+    for idx, name in enumerate(pending_names):
+        alias_key = f"name_{idx}"
+        company = None
+        nodes = data_map.get(alias_key, {}).get("nodes", [])
+
+        if len(nodes) > 1:
+            print(
+                f"ℹ️ Multiple GitHub user nodes found matching the full name: '{name}'. Using the first match."
+            )
+
+        if nodes and nodes[0].get("company"):
+            company = nodes[0]["company"].lstrip("@").strip()
+            if company:
+                cache.set(f"gh_company_name:{name}", company)
+                results[name] = company
+                continue
+
+        cache.set(f"gh_company_name:{name}", "")
+        results[name] = None
 
     return results
 
@@ -209,10 +275,7 @@ def enrich_project_contexts_with_companies(
         orgs_df = ctx.organisations.clone()
         affils_df = ctx.affiliations.clone()
         idents_df = ctx.person_identifiers
-
-        if idents_df.is_empty():
-            enriched_contexts.append(ctx)
-            continue
+        persons_df = ctx.persons
 
         # Setup base metadata states
         existing_affils_set = set(
@@ -230,18 +293,27 @@ def enrich_project_contexts_with_companies(
         )
         new_orgs_records, new_affils_records = [], []
 
-        rows = idents_df.to_dicts()
+        # Prepare base dictionary tracking keys from person_identifiers
+        rows = idents_df.to_dicts() if not idents_df.is_empty() else []
         resolved_companies = {
             (row["person_id"], str(row["identifier"]).strip()): set() for row in rows
         }
+
+        # Inject/ensure tracking keys exist for ALL known individuals inside ctx.persons
+        person_rows = persons_df.to_dicts() if not persons_df.is_empty() else []
+        for p_row in person_rows:
+            p_id = p_row["person_id"]
+            fallback_key = (p_id, "full_name_lookup")
+
+            has_existing_identifier = any(k[0] == p_id for k in resolved_companies)
+            if not has_existing_identifier:
+                resolved_companies[fallback_key] = set()
 
         # ------------------------------------------------------------------
         # TACTIC 1: Email Heuristic Domain Profiling (Local Only)
         # ------------------------------------------------------------------
         for row in rows:
             ident = str(row["identifier"]).strip()
-            ident_type = str(row["identifier_type"]).lower()
-
             if "@" in ident and len(ident.split("@")) == 2:
                 domain_company = _extract_email_domain_company(ident)
                 if domain_company:
@@ -251,12 +323,9 @@ def enrich_project_contexts_with_companies(
         # ------------------------------------------------------------------
         # TACTIC 2: GitHub Graph API Lookups via Email Strings
         # ------------------------------------------------------------------
-        # Sub-step 2a: Check Local Cache and collect Cache Misses
         uncached_emails = []
         for row in rows:
             ident = str(row["identifier"]).strip()
-            ident_type = str(row["identifier_type"]).lower()
-
             if "@" in ident and len(ident.split("@")) == 2:
                 row_key = (row["person_id"], ident)
                 cache_key = f"gh_company_email:{ident}"
@@ -268,7 +337,6 @@ def enrich_project_contexts_with_companies(
                 else:
                     uncached_emails.append(ident)
 
-        # Sub-step 2b: Network fetch for Email Misses
         if uncached_emails:
             unique_emails = list(set(uncached_emails))
             for i in tqdm(
@@ -287,7 +355,6 @@ def enrich_project_contexts_with_companies(
         # ------------------------------------------------------------------
         # TACTIC 3: GitHub Graph API Lookups via Username Attributes
         # ------------------------------------------------------------------
-        # Sub-step 3a: Check Local Cache and collect Cache Misses
         uncached_usernames = []
         for row in rows:
             ident = str(row["identifier"]).strip()
@@ -305,7 +372,6 @@ def enrich_project_contexts_with_companies(
                 else:
                     uncached_usernames.append(ident)
 
-        # Sub-step 3b: Network fetch for Username Misses
         if uncached_usernames:
             unique_usernames = list(set(uncached_usernames))
             for i in tqdm(
@@ -322,14 +388,59 @@ def enrich_project_contexts_with_companies(
                         discovered.add(api_results[ident])
 
         # ------------------------------------------------------------------
-        # PHASE 4: State Pipeline Sync & DataFrame Materialization
+        # TACTIC 4: GitHub Graph API Lookups via Full Name (All Context Persons)
         # ------------------------------------------------------------------
-        for row in rows:
-            row_key = (row["person_id"], str(row["identifier"]).strip())
-            if row_key in resolved_companies and resolved_companies[row_key]:
+        uncached_names = []
+        name_to_row_keys_map = {}
+
+        for p_row in person_rows:
+            p_id = p_row["person_id"]
+            full_name = p_row.get("full_name")
+            if not full_name:
+                continue
+
+            full_name = str(full_name).strip()
+            cache_key = f"gh_company_name:{full_name}"
+
+            target_keys = [k for k in resolved_companies if k[0] == p_id]
+            if not target_keys:
+                target_keys = [(p_id, "full_name_lookup")]
+                resolved_companies[target_keys[0]] = set()
+
+            if cache_key in cache:
+                cached_val = cache[cache_key]
+                if cached_val:
+                    for tk in target_keys:
+                        resolved_companies[tk].add(cached_val)
+            else:
+                uncached_names.append(full_name)
+                if full_name not in name_to_row_keys_map:
+                    name_to_row_keys_map[full_name] = []
+                name_to_row_keys_map[full_name].extend(target_keys)
+
+        if uncached_names:
+            unique_names = list(set(uncached_names))
+            for i in tqdm(
+                range(0, len(unique_names), batch_size),
+                desc=f"📝 Fetching Full Name Batches ({ctx.project_name})",
+                unit="batch",
+            ):
+                batch = unique_names[i : i + batch_size]
+                api_results = _fetch_companies_by_fullname_batch(batch)
+
+                for name_item, company_found in api_results.items():
+                    if company_found and name_item in name_to_row_keys_map:
+                        for target_key in name_to_row_keys_map[name_item]:
+                            resolved_companies[target_key].add(company_found)
+
+        # ------------------------------------------------------------------
+        # PHASE 5: State Pipeline Sync & DataFrame Materialization
+        # ------------------------------------------------------------------
+        for (person_id, _), companies in resolved_companies.items():
+            if companies:
                 max_org_id = _update_context_records(
-                    person_id=row["person_id"],
-                    discovered_companies=resolved_companies[row_key],
+                    person_id=person_id,
+                    discovered_companies=companies,
                     existing_orgs=existing_orgs,
                     existing_affils_set=existing_affils_set,
                     max_org_id=max_org_id,

@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from statistics import IndividualProjectContext
 from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
@@ -8,8 +9,6 @@ import numpy as np
 import polars as pl
 import rustworkx as rx
 from matplotlib.ticker import MaxNLocator
-
-from src.statistics import IndividualProjectContext
 
 # =====================================================================
 # Structured Data Containers
