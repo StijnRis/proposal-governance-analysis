@@ -10,10 +10,7 @@ from dataloader import TABLE_SCHEMAS, IndividualProjectContext
 def merge_duplicate_companies_in_contexts(
     contexts: list[IndividualProjectContext], output_dir: Path
 ) -> list[IndividualProjectContext]:
-    all_clean_companies = set()
-    all_original_companies = set()
-
-    alias_filepath = "../data/companies_aliases.json"
+    alias_filepath = "data/companies_aliases.json"
     alias_dict: dict[str, str] = {}
 
     # 1. Load and flatten aliases into a clean dictionary
@@ -49,6 +46,8 @@ def merge_duplicate_companies_in_contexts(
         for master, aliases in sorted(updated_json_data.items())
     }
 
+    all_clean_companies = set()
+    all_original_companies = set()
     # Save back to the original file
     with open(alias_filepath, "w", encoding="utf-8") as f:
         json.dump(final_output, f, indent=4, ensure_ascii=False)

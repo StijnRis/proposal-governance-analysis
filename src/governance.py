@@ -1,49 +1,36 @@
-import logging
-from dataclasses import dataclass, field
-from pathlib import Path
-from statistics import IndividualProjectContext
-from typing import Dict, List, Tuple
-
-import matplotlib.pyplot as plt
-import numpy as np
-import polars as pl
-import rustworkx as rx
-from matplotlib.ticker import MaxNLocator
-
 # =====================================================================
 # Structured Data Containers
 # =====================================================================
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Tuple, Union
 
+import numpy as np
+import polars as pl
+import rustworkx as rx
+import scipy.stats as stats
 
-@dataclass
-class GovernanceStatItem:
-    """Represents a structural governance domain category containing one or more metrics.
-
-    Structure of metrics data:
-    {
-        "Metric/Sub-metric Name": {
-            2024: 0.88,
-            2025: 0.91
-        }
-    }
-    """
-
-    stat_name: str
-    metrics: Dict[str, Dict[int, float]] = field(default_factory=dict)
+from statistics2 import IndividualProjectContext
 
 
 @dataclass
 class GovernanceProjectStats:
-    """Top-level container storing all categorized governance item dimensions for a project."""
+    """Stores both timeline history and pooled multi-year summary metrics for a project."""
 
     project_name: str
-    items: Dict[str, GovernanceStatItem] = field(default_factory=dict)
+    metrics: Dict[str, Dict[int, float]] = field(default_factory=dict)
+    pooled_metrics: Dict[str, float] = field(default_factory=dict)
 
-    def get_or_create_item(self, stat_name: str) -> GovernanceStatItem:
-        """Safely fetches or initializes an isolated governance stat node."""
-        if stat_name not in self.items:
-            self.items[stat_name] = GovernanceStatItem(stat_name=stat_name)
-        return self.items[stat_name]
+
+@dataclass
+class KnownGroupsValidationResult:
+    """Holds structured statistical test outputs and arrays cleanly divorced from plotting layers."""
+
+    ordered_keys: List[str]
+    dimensions: List[str]
+    validity_rows: List[Dict[str, Any]]
+    group_data: Dict[
+        str, Dict[str, np.ndarray]
+    ]  # Formatted as: {dimension: {"Community": array, "Corporate": array}}
 
 
 # =====================================================================
@@ -58,24 +45,34 @@ def _polars_gini_expr(col_name: str) -> pl.Expr:
     sum_x = valid_sorted.sum()
 
     index = valid_sorted.rank("ordinal")
-    gini_raw = (2 * (index * valid_sorted).sum() / (n * sum_x)) - ((n + 1) / n)
-    unbiased_gini = gini_raw * (n / (n - 1))
+    gini = (2 * (index * valid_sorted).sum() / (n * sum_x)) - ((n + 1) / n)
 
-    return pl.when((n <= 1) | (sum_x == 0)).then(0.0).otherwise(unbiased_gini)
+    return pl.when((n <= 1) | (sum_x == 0)).then(0.0).otherwise(gini)
 
 
 # =====================================================================
-# Metric Transformation Engines
+# Metric Transformation Engines (Configurable Sliding Window Designs)
 # =====================================================================
-
-
-def compute_independence_hhi_per_year(
-    ctx: IndividualProjectContext,
-) -> Dict[int, Dict[str, float]]:
-    """Computes Normalized Inverse HHI for organizational independence per year.
-
-    Excludes authors who are not affiliated with any registered organization.
+def compute_independence_hhi(
+    ctx: IndividualProjectContext, window_size: int, mode: str
+) -> Union[float, Dict[int, float]]:
     """
+    Computes Inverse HHI (1 - HHI) for organizational independence.
+    Optimized: Isolates core proposal authorship shares without log-comment smoothing.
+    """
+    # Group strictly by proposal authorship to separate organizational control
+    proposal_counts = ctx.proposal_revision_authors.group_by(["author_id"]).agg(
+        pl.len().alias("proposal_count")
+    )
+
+    df_authors = (
+        ctx.affiliations.join(ctx.organisations, on="organisation_id", how="inner")
+        .rename({"person_id": "author_id"})
+        .join(
+            proposal_counts, on="author_id", how="inner"
+        )  # Inner join focuses on governing actors
+    )
+
     first_proposal_date = ctx.proposal_revisions.group_by("proposal_id").agg(
         pl.col("created_at").min()
     )
@@ -85,672 +82,456 @@ def compute_independence_hhi_per_year(
             ctx.proposal_revision_authors, on="proposal_id", how="inner"
         )
         .with_columns(pl.col("created_at").dt.year().alias("year"))
-        .filter(pl.col("year").is_not_null())
-        .select(["year", "proposal_id", "author_id"])
-    )
-    if df.is_empty():
-        logging.warning(f"No valid proposal revisions found in {ctx.project_name}.")
-        return {}
-
-    # Map authors to their exact organizations
-    org_map = ctx.affiliations.join(
-        ctx.organisations, on="organisation_id", how="inner"
+        .join(df_authors, on="author_id", how="inner")
     )
 
-    # Change to how="inner" to auto-drop any author without an official organization affiliation
-    df_with_orgs = df.join(
-        org_map, left_on="author_id", right_on="person_id", how="inner"
-    ).with_columns(pl.col("organisation_name").alias("org"))
+    if df.height < 2:
+        return 0.0 if mode == "most_recent" else {}
 
-    if df_with_orgs.height < 10:
-        logging.warning(
-            f"Insufficient data for {ctx.project_name}. "
-            f"Found only {df_with_orgs.height} corporate affiliations (minimum 10 required)."
+    def _calculate_core_hhi(sliced_df: pl.DataFrame) -> float:
+        if sliced_df.height < 2:
+            return 0.0
+
+        # Calculate HHI on absolute proposal distribution weight per organization
+        org_shares = sliced_df.group_by("organisation_name").agg(
+            pl.col("proposal_count").sum().alias("total_org_weight")
         )
-        return {}
 
-    # If all authors were filtered out because none have affiliations, return empty
-    if df_with_orgs.is_empty():
-        logging.warning(f"No affiliated authors found in {ctx.project_name}.")
-        return {}
+        total_weight = org_shares["total_org_weight"].sum()
+        if total_weight == 0:
+            return 0.0
 
-    yearly_data = (
-        df_with_orgs.group_by(["year", "org"])
-        .agg(pl.col("author_id").n_unique().alias("unique_authors_per_org"))
-        .with_columns(
-            share=pl.col("unique_authors_per_org")
-            / pl.col("unique_authors_per_org").sum().over("year")
-        )
-        .group_by("year")
-        .agg(
-            raw_hhi=(pl.col("share") ** 2).sum(),
-            n_orgs=pl.col("org").n_unique(),
-        )
-    )
+        shares = org_shares["total_org_weight"] / total_weight
+        hhi = (shares**2).sum()
+        return float(1.0 - hhi)
 
-    year_independence = {}
-    for row in yearly_data.iter_rows(named=True):
-        yr = int(row["year"])
-        raw_hhi = float(row["raw_hhi"])
-        n = int(row["n_orgs"])
+    max_year = df.select(pl.col("year").max()).item()
 
-        if n <= 1:
-            score = 0.0
-        else:
-            hhi_star = (raw_hhi - (1.0 / n)) / (1.0 - (1.0 / n))
-            score = 1.0 - hhi_star
-
-        year_independence[yr] = {"Independence": max(0.0, min(1.0, float(score)))}
-
-    return year_independence
+    if mode == "most_recent":
+        start_year = max_year - window_size + 1
+        pooled_df = df.filter(pl.col("year").is_between(start_year, max_year))
+        return _calculate_core_hhi(pooled_df)
+    elif mode == "all_windows":
+        min_year = df.select(pl.col("year").min()).item()
+        results = {}
+        for end_year in range(min_year, max_year + 1):
+            start_year = end_year - window_size + 1
+            window_df = df.filter(pl.col("year").is_between(start_year, end_year))
+            results[end_year] = _calculate_core_hhi(window_df)
+        return results
+    else:
+        raise ValueError(f"Unknown mode: {mode}")
 
 
-def compute_pluralism_author_gini_per_year(
-    ctx: IndividualProjectContext,
-) -> Dict[int, Dict[str, float]]:
-    """Computes Pluralism Score as the inverse Gini Coefficient of proposal authorship."""
-    first_revision = ctx.proposal_revisions.group_by("proposal_id").agg(
-        min_rev=pl.col("revision_index").min(),
-        created_at=pl.col("created_at").min(),
-    )
-
+def compute_pluralism_author_gini(
+    ctx: IndividualProjectContext, window_size: int, mode: str
+) -> Union[float, Dict[int, float]]:
+    """
+    Computes Pluralism Score as the inverse Gini Coefficient of proposal authorship.
+    Optimized: Measures all historical revision interactions rather than isolating index 0.
+    """
+    # Evaluate across all revisions to track collaborative community code adjustments
     df = (
-        first_revision.join(
+        ctx.proposal_revisions.join(
             ctx.proposal_revision_authors,
-            left_on=["proposal_id", "min_rev"],
-            right_on=["proposal_id", "revision_index"],
+            on=["proposal_id", "revision_index"],
             how="inner",
         )
         .with_columns(pl.col("created_at").dt.year().alias("year"))
         .filter(pl.col("year").is_not_null())
     )
     if df.is_empty():
-        logging.warning(f"No valid authorships found in {ctx.project_name}.")
-        return {}
+        return 0.0 if mode == "most_recent" else {}
 
-    gini_per_year = (
-        df.group_by(["year", "author_id"])
-        .agg(pl.len().alias("contribution_count"))
-        .group_by("year")
-        .agg((1.0 - _polars_gini_expr("contribution_count")).alias("inverse_gini"))
-    )
+    def _calculate_core_pluralism(sliced_df: pl.DataFrame) -> float:
+        if sliced_df.is_empty():
+            return 0.0
+        gini_expr = (
+            sliced_df.group_by("author_id")
+            .agg(pl.len().alias("contribution_count"))
+            .select(
+                (1.0 - _polars_gini_expr("contribution_count")).alias("inverse_gini")
+            )
+        )
+        return float(gini_expr.item()) if not gini_expr.is_empty() else 0.0
 
-    return {int(r[0]): {"Pluralism": float(r[1])} for r in gini_per_year.iter_rows()}
+    max_year = df.select(pl.col("year").max()).item()
 
-
-def compute_representation_comment_gini_per_year(
-    ctx: IndividualProjectContext,
-) -> Dict[int, Dict[str, float]]:
-    """Computes Representation Score as the inverse Gini Coefficient of comments."""
-    df = ctx.comments.filter(
-        pl.col("author_id").is_not_null() & pl.col("created_at").is_not_null()
-    ).with_columns(pl.col("created_at").dt.year().alias("year"))
-
-    if df.is_empty():
-        logging.warning(f"No valid comments found in {ctx.project_name}.")
-        return {}
-
-    gini_per_year = (
-        df.group_by(["year", "author_id"])
-        .agg(pl.len().alias("comment_count"))
-        .group_by("year")
-        .agg((1.0 - _polars_gini_expr("comment_count")).alias("inverse_gini"))
-    )
-
-    return {
-        int(r[0]): {"Representation": float(r[1])} for r in gini_per_year.iter_rows()
-    }
+    if mode == "most_recent":
+        start_year = max_year - window_size + 1
+        pooled_df = df.filter(pl.col("year").is_between(start_year, max_year))
+        return _calculate_core_pluralism(pooled_df)
+    elif mode == "all_windows":
+        min_year = df.select(pl.col("year").min()).item()
+        results = {}
+        for end_year in range(min_year, max_year + 1):
+            start_year = end_year - window_size + 1
+            window_df = df.filter(pl.col("year").is_between(start_year, end_year))
+            results[end_year] = _calculate_core_pluralism(window_df)
+        return results
+    else:
+        raise ValueError(f"Unknown mode: {mode}")
 
 
-def compute_centralization_metrics_per_year(
-    ctx: IndividualProjectContext,
-) -> Dict[int, Dict[str, float]]:
-    """Computes Network Decentralization Scores (1 - Centralization) for structural elements."""
+def compute_centralization_metrics(
+    ctx: IndividualProjectContext, window_size: int, mode: str
+) -> Union[float, Dict[int, float]]:
+    """
+    Computes Network Betweenness Decentralization Index using bipartite participation.
+    Optimized: Removes intra-project self-normalization loops to expose variance.
+    """
     rev_df = (
         ctx.proposal_revision_authors.join(
             ctx.proposal_revisions, on=["proposal_id", "revision_index"], how="inner"
         )
         .with_columns(
+            pl.lit(1.0).alias("auth_weight"),
             year=pl.col("created_at").dt.year(),
-            group_id=pl.col("proposal_id"),
         )
-        .select(["year", "group_id", "author_id"])
+        .select(["year", "proposal_id", "author_id", "auth_weight"])
     )
 
     comment_df = (
         ctx.comments.filter(
-            pl.col("proposal_id").is_not_null()
-            & pl.col("author_id").is_not_null()
-            & pl.col("created_at").is_not_null()
+            pl.col("proposal_id").is_not_null() & pl.col("author_id").is_not_null()
+        )
+        .group_by(["proposal_id", "author_id"])
+        .agg(pl.len().alias("c_ip"))
+        # Absolute mathematical scaling without internal division filters
+        .with_columns(normalized_comment_weight=pl.col("c_ip").add(1).log())
+    )
+
+    combined_participation = (
+        rev_df.join(
+            comment_df.select(
+                ["proposal_id", "author_id", "normalized_comment_weight"]
+            ),
+            on=["proposal_id", "author_id"],
+            how="outer",
         )
         .with_columns(
-            year=pl.col("created_at").dt.year(),
-            group_id=pl.col("proposal_id"),
+            pl.col("auth_weight").fill_null(0.0),
+            pl.col("normalized_comment_weight").fill_null(0.0),
         )
-        .select(["year", "group_id", "author_id"])
+        .with_columns(
+            (pl.col("auth_weight") + pl.col("normalized_comment_weight")).alias(
+                "edge_weight"
+            )
+        )
     )
+    if combined_participation.is_empty():
+        return 0.0 if mode == "most_recent" else {}
 
-    combined_df = pl.concat([rev_df, comment_df]).filter(
-        pl.col("year").is_not_null() & pl.col("author_id").is_not_null()
-    )
-    if combined_df.is_empty():
-        return {}
+    def _calculate_core_centralization(sliced_df: pl.DataFrame) -> float:
+        if sliced_df.is_empty():
+            return 1.0
 
-    year_groups = combined_df.group_by(["year", "group_id"]).agg(
-        pl.col("author_id").unique().alias("members")
-    )
+        year_groups = sliced_df.group_by("proposal_id").agg(
+            pl.col("author_id").unique().alias("members")
+        )
 
-    edges_map = {}
-    year_nodes = {}
+        edges_map = {}
+        nodes_set = set()
 
-    for row in year_groups.iter_rows(named=True):
-        yr = int(row["year"])
-        members = sorted(list(row["members"]))
-        if len(members) < 2:
-            continue
+        for row in year_groups.iter_rows(named=True):
+            members = sorted(list(row["members"]))
+            if len(members) < 2:
+                continue
 
-        if yr not in year_nodes:
-            year_nodes[yr] = set()
-        year_nodes[yr].update(members)
+            nodes_set.update(members)
+            for i in range(len(members)):
+                for j in range(i + 1, len(members)):
+                    edge_key = (members[i], members[j])
+                    edges_map[edge_key] = edges_map.get(edge_key, 0) + 1
 
-        for i in range(len(members)):
-            for j in range(i + 1, len(members)):
-                u, v = members[i], members[j]
-                edge_key = (yr, u, v)
-                edges_map[edge_key] = edges_map.get(edge_key, 0) + 1
-
-    year_centralization = {}
-    all_years = sorted(list(year_nodes.keys()))
-
-    for yr in all_years:
-        nodes = list(year_nodes[yr])
+        nodes = list(nodes_set)
         n = len(nodes)
-
         if n < 3:
-            year_centralization[yr] = {
-                "Degree": 1.0,
-                "Betweenness": 1.0,
-                "Closeness": 1.0,
-            }
-            continue
+            return 1.0
 
         node_to_idx = {node: idx for idx, node in enumerate(nodes)}
         g = rx.PyGraph()
         g.add_nodes_from(nodes)
 
         yr_edges = [
-            (node_to_idx[k[1]], node_to_idx[k[2]], 1.0 / weight)
-            for k, weight in edges_map.items()
-            if k[0] == yr
+            (node_to_idx[k[0]], node_to_idx[k[1]], 1.0 / w)
+            for k, w in edges_map.items()
         ]
 
         if not yr_edges:
-            year_centralization[yr] = {
-                "Degree": 1.0,
-                "Betweenness": 1.0,
-                "Closeness": 1.0,
-            }
-            continue
+            return 1.0
 
         g.add_edges_from(yr_edges)
+        cb_dict = dict(rx.graph_betweenness_centrality(g, normalized=True))
 
-        # Degree
-        deg_map = {node_idx: g.degree(node_idx) for node_idx in range(n)}
-        deg_vals = [deg / (n - 1) for deg in deg_map.values()]
-        max_deg = max(deg_vals) if deg_vals else 0.0
-        deg_sum_diff = sum((max_deg - v) for v in deg_vals)
-        deg_denom = float(n - 2)
-        deg_index = float(deg_sum_diff / deg_denom if deg_denom > 0 else 0.0)
-
-        # Betweenness
-        weighted_cb = {i: 0.0 for i in range(n)}
-        path_res = rx.all_pairs_dijkstra_shortest_paths(
-            g, edge_cost_fn=lambda e: float(e)
-        )
-
-        total_paths = 0
-        for s, targets in path_res.items():
-            for t, path in targets.items():
-                if s == t:
-                    continue
-                total_paths += 1
-                if len(path) > 2:
-                    inner_nodes = path[1:-1]
-                    for node in inner_nodes:
-                        weighted_cb[node] += 1.0
-
-        cb_vals = [
-            score / total_paths if total_paths > 0 else 0.0
-            for score in weighted_cb.values()
-        ]
+        cb_vals = [cb_dict.get(i, 0.0) for i in range(n)]
         max_cb = max(cb_vals) if cb_vals else 0.0
         cb_sum_diff = sum((max_cb - v) for v in cb_vals)
-        cb_denom = float((n - 1) * (n - 2))
-        cb_index = float((cb_sum_diff / cb_denom) * n if cb_denom > 0 else 0.0)
 
-        # Closeness
-        cc_map = rx.closeness_centrality(g)
-        cc_vals = list(cc_map.values())
-        max_cc = max(cc_vals) if cc_vals else 0.0
-        cc_sum_diff = sum((max_cc - v) for v in cc_vals)
-        cc_denom = float(((n - 1) * (n - 2)) / (2 * n - 3))
-        cc_index = float(cc_sum_diff / cc_denom if cc_denom > 0 else 0.0)
+        cb_denom = float(n - 1)
+        cb_index = float(cb_sum_diff / cb_denom if cb_denom > 0 else 0.0)
+        return float(max(0.0, min(1.0, 1.0 - cb_index)))
 
-        year_centralization[yr] = {
-            "Degree": float(max(0.0, min(1.0, 1.0 - deg_index))),
-            "Betweenness": float(max(0.0, min(1.0, 1.0 - cb_index))),
-            "Closeness": float(max(0.0, min(1.0, 1.0 - cc_index))),
-        }
+    max_year = combined_participation.select(pl.col("year").max()).item()
 
-    return year_centralization
+    if mode == "most_recent":
+        start_year = max_year - window_size + 1
+        pooled_df = combined_participation.filter(
+            pl.col("year").is_between(start_year, max_year)
+        )
+        return _calculate_core_centralization(pooled_df)
+    elif mode == "all_windows":
+        min_year = combined_participation.select(pl.col("year").min()).item()
+        results = {}
+        for end_year in range(min_year, max_year + 1):
+            start_year = end_year - window_size + 1
+            window_df = combined_participation.filter(
+                pl.col("year").is_between(start_year, end_year)
+            )
+            results[end_year] = _calculate_core_centralization(window_df)
+        return results
+    else:
+        raise ValueError(f"Unknown mode: {mode}")
 
 
-def compute_newcomers_onboarding_per_year(
-    ctx: IndividualProjectContext,
-) -> Dict[int, Dict[str, float]]:
-    """Computes Autonomous Participation Score as the proportion of newcomer proposals."""
-    global_earliest = (
+def compute_newcomers_onboarding(
+    ctx: IndividualProjectContext, window_size: int, mode: str
+) -> Union[float, Dict[int, float]]:
+    """Computes Autonomous Participation Score as the proportion of first-time
+
+    contributors among all active contributors within configurable windows.
+    """
+    author_first_activity = (
         ctx.proposal_revision_authors.join(
             ctx.proposal_revisions, on=["proposal_id", "revision_index"], how="inner"
         )
         .group_by("author_id")
-        .agg(first_global_activity=pl.col("created_at").min())
+        .agg(first_activity_year=pl.col("created_at").dt.year().min())
     )
 
-    first_revision = ctx.proposal_revisions.group_by("proposal_id").agg(
-        min_rev=pl.col("revision_index").min(),
-        proposal_created_at=pl.col("created_at").min(),
-    )
-
-    proposals_df = (
-        first_revision.join(
-            ctx.proposal_revision_authors,
-            left_on=["proposal_id", "min_rev"],
-            right_on=["proposal_id", "revision_index"],
-            how="inner",
+    all_activity = (
+        ctx.proposal_revision_authors.join(
+            ctx.proposal_revisions, on=["proposal_id", "revision_index"], how="inner"
         )
-        .join(global_earliest, on="author_id", how="left")
-        .with_columns(year=pl.col("proposal_created_at").dt.year())
-        .filter(pl.col("year").is_not_null())
+        .with_columns(year=pl.col("created_at").dt.year())
+        .select(["year", "author_id"])
+        .unique()
     )
-    if proposals_df.is_empty():
-        return {}
 
-    onboarding_rate = (
-        proposals_df.with_columns(
-            author_is_experienced=pl.col("first_global_activity")
-            < pl.col("proposal_created_at")
-        )
-        .group_by(["year", "proposal_id"])
-        .agg(has_experienced_author=pl.col("author_is_experienced").any())
-        .with_columns(is_newcomer_proposal=~pl.col("has_experienced_author"))
-        .group_by("year")
-        .agg(
-            total_proposals=pl.col("proposal_id").n_unique(),
-            newcomer_proposals=pl.col("is_newcomer_proposal").sum(),
-        )
-        .with_columns(rate=pl.col("newcomer_proposals") / pl.col("total_proposals"))
-        .sort("year")
-    )
-    return {
-        int(row["year"]): {"Autonomous Participation": float(row["rate"])}
-        for row in onboarding_rate.iter_rows(named=True)
-    }
+    if all_activity.is_empty():
+        return 0.0 if mode == "most_recent" else {}
 
+    def _calculate_core_onboarding(sliced_df: pl.DataFrame) -> float:
+        if sliced_df.is_empty():
+            return 0.0
+        total_active_authors = sliced_df.select("author_id").n_unique()
+        if total_active_authors == 0:
+            return 0.0
 
-# =====================================================================
-# Grouping Visualization Helpers
-# =====================================================================
+        joined = sliced_df.join(author_first_activity, on="author_id", how="inner")
+        window_min_year = sliced_df.select(pl.col("year").min()).item()
+        window_max_year = sliced_df.select(pl.col("year").max()).item()
 
-
-def _extract_grouped_metric_labels(
-    projects_stats: List[GovernanceProjectStats],
-) -> List[Tuple[str, str]]:
-    """Identifies and resolves flat mapping of (Parent Governance Stat, Nested Statistic Name) tuples."""
-    pairs = set()
-    for p_entry in projects_stats:
-        for stat_name, item in p_entry.items.items():
-            for metric_key in item.metrics.keys():
-                pairs.add((stat_name, metric_key))
-    return sorted(list(pairs), key=lambda x: (x[0], x[1]))
-
-
-def plot_consolidated_line_charts(
-    projects_stats: List[GovernanceProjectStats], output_dir: Path
-) -> None:
-    """Plots line metrics dynamically grouping metrics under their respective Governance domains."""
-    grouped_pairs = _extract_grouped_metric_labels(projects_stats)
-    colors = plt.colormaps["tab10"](np.linspace(0, 1, max(10, len(projects_stats))))
-
-    for stat_name, metric_key in grouped_pairs:
-        fig, ax = plt.subplots(figsize=(11, 6))
-        has_data = False
-
-        for idx, p_stat in enumerate(projects_stats):
-            if (
-                stat_name in p_stat.items
-                and metric_key in p_stat.items[stat_name].metrics
-            ):
-                timeline = p_stat.items[stat_name].metrics[metric_key]
-                if not timeline:
-                    continue
-
-                has_data = True
-                years = sorted(timeline.keys())
-                scores = [timeline[y] for y in years]
-
-                ax.plot(
-                    years,
-                    scores,
-                    marker="o",
-                    linewidth=2,
-                    markersize=6,
-                    color=colors[idx % len(colors)],
-                    label=p_stat.project_name,
+        new_authors = (
+            joined.filter(
+                pl.col("first_activity_year").is_between(
+                    window_min_year, window_max_year
                 )
-
-        display_title = (
-            f"{stat_name} $\\rightarrow$ {metric_key}"
-            if stat_name != metric_key
-            else stat_name
-        )
-        ax.set_title(
-            f"Trend Analysis: {display_title}", fontsize=12, fontweight="bold", pad=15
-        )
-        ax.set_xlabel("Year", fontsize=10)
-        ax.set_ylabel("Score Profile Index", fontsize=10)
-        ax.set_ylim(-0.05, 1.05)
-        ax.grid(True, linestyle="--", alpha=0.6)
-        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-
-        if has_data:
-            ax.legend(
-                loc="upper left",
-                bbox_to_anchor=(1.02, 1),
-                borderaxespad=0,
-                frameon=True,
             )
-
-        plt.tight_layout()
-        safe_filename = "".join(
-            c if c.isalnum() else "_" for c in f"{stat_name}_{metric_key}"
-        ).lower()
-        plt.savefig(
-            str(output_dir / f"line_{safe_filename}.png"), dpi=300, bbox_inches="tight"
+            .select("author_id")
+            .n_unique()
         )
-        plt.close()
+        return float(new_authors / total_active_authors)
 
+    max_year = all_activity.select(pl.col("year").max()).item()
 
-def plot_combined_heatmap(
-    projects_stats: List[GovernanceProjectStats], output_dir: Path
-) -> None:
-    """Generates a composite cross-project overview grouping sub-statistics transparently."""
-    if not projects_stats:
-        return
+    if mode == "most_recent":
+        start_year = max_year - window_size + 1
+        pooled_df = all_activity.filter(pl.col("year").is_between(start_year, max_year))
+        return _calculate_core_onboarding(pooled_df)
 
-    grouped_pairs = _extract_grouped_metric_labels(projects_stats)
-    unique_projects = sorted([p.project_name for p in projects_stats])
-
-    if not grouped_pairs or not unique_projects:
-        return
-
-    matrix_data = np.zeros((len(grouped_pairs), len(unique_projects)))
-    project_map = {p.project_name: p for p in projects_stats}
-
-    for m_idx, (stat_name, metric_key) in enumerate(grouped_pairs):
-        for p_idx, p_name in enumerate(unique_projects):
-            p_obj = project_map[p_name]
-            if (
-                stat_name in p_obj.items
-                and metric_key in p_obj.items[stat_name].metrics
-            ):
-                vals = list(p_obj.items[stat_name].metrics[metric_key].values())
-                matrix_data[m_idx, p_idx] = np.mean(vals) if vals else 0.0
-
-    fig, ax = plt.subplots(figsize=(12, 7))
-    im = ax.imshow(matrix_data, cmap="YlGnBu", aspect="auto", vmin=0.0, vmax=1.0)
-
-    row_labels = [
-        f"{s_name} ({m_key})" if s_name != m_key else s_name
-        for s_name, m_key in grouped_pairs
-    ]
-
-    ax.set_xticks(np.arange(len(unique_projects)))
-    ax.set_yticks(np.arange(len(grouped_pairs)))
-    ax.set_xticklabels(unique_projects, rotation=45, ha="right", fontsize=10)
-    ax.set_yticklabels(row_labels, fontsize=10)
-
-    for i in range(len(grouped_pairs)):
-        for j in range(len(unique_projects)):
-            ax.text(
-                j,
-                i,
-                f"{matrix_data[i, j]:.2f}",
-                ha="center",
-                va="center",
-                color="black" if matrix_data[i, j] < 0.7 else "white",
-                fontweight="bold",
+    elif mode == "all_windows":
+        min_year = all_activity.select(pl.col("year").min()).item()
+        results = {}
+        for end_year in range(min_year, max_year + 1):
+            start_year = end_year - window_size + 1
+            window_df = all_activity.filter(
+                pl.col("year").is_between(start_year, end_year)
             )
-
-    fig.colorbar(im, ax=ax, label="Normalized Mean Performance Value")
-    ax.set_title(
-        "Grouped Governance Profile Cross-Heatmap Summary",
-        fontsize=13,
-        fontweight="bold",
-        pad=20,
-    )
-    plt.tight_layout()
-    plt.savefig(
-        str(output_dir / "combined_grouped_heatmap.png"), dpi=300, bbox_inches="tight"
-    )
-    plt.close()
+            results[end_year] = _calculate_core_onboarding(window_df)
+        return results
+    else:
+        raise ValueError(f"Unknown mode: {mode}")
 
 
-def plot_combined_parallel_coordinates(
-    projects_stats: List[GovernanceProjectStats], output_dir: Path
-) -> None:
-    """Constructs a Parallel Coordinates Plot visualizing project trajectory paths."""
-    if not projects_stats:
-        return
+def compute_representation_comment_gini(
+    ctx: IndividualProjectContext, window_size: int, mode: str
+) -> Union[float, Dict[int, float]]:
+    """Computes Representation Score as the inverse Gini Coefficient of comments over windows."""
+    df = ctx.comments.filter(
+        pl.col("author_id").is_not_null() & pl.col("created_at").is_not_null()
+    ).with_columns(pl.col("created_at").dt.year().alias("year"))
 
-    grouped_pairs = _extract_grouped_metric_labels(projects_stats)
-    if len(grouped_pairs) < 2:
-        return
+    if df.is_empty():
+        return 0.0 if mode == "most_recent" else {}
 
-    fig, ax = plt.subplots(figsize=(14, 6))
-    x_positions = np.arange(len(grouped_pairs))
-
-    colors = plt.colormaps["Set1"](np.linspace(0, 1, len(projects_stats)))
-    project_map = {p.project_name: p for p in projects_stats}
-
-    for idx, (p_name, p_obj) in enumerate(project_map.items()):
-        trajectory_vector = []
-        for stat_name, metric_key in grouped_pairs:
-            if (
-                stat_name in p_obj.items
-                and metric_key in p_obj.items[stat_name].metrics
-            ):
-                vals = list(p_obj.items[stat_name].metrics[metric_key].values())
-                trajectory_vector.append(np.mean(vals) if vals else 0.0)
-            else:
-                trajectory_vector.append(0.0)
-
-        ax.plot(
-            x_positions,
-            trajectory_vector,
-            marker="s",
-            linewidth=2.5,
-            markersize=8,
-            color=colors[idx],
-            label=p_name,
-            alpha=0.85,
+    def _calculate_core_representation(sliced_df: pl.DataFrame) -> float:
+        if sliced_df.is_empty():
+            return 0.0
+        gini_expr = (
+            sliced_df.group_by("author_id")
+            .agg(pl.len().alias("comment_count"))
+            .select((1.0 - _polars_gini_expr("comment_count")).alias("inverse_gini"))
         )
+        return float(gini_expr.item()) if not gini_expr.is_empty() else 0.0
 
-    for pos in x_positions:
-        ax.axvline(pos, color="black", linestyle="-", alpha=0.25, zorder=1)
+    max_year = df.select(pl.col("year").max()).item()
 
-    axis_labels = [
-        f"{s_name}\n({m_key})" if s_name != m_key else s_name
-        for s_name, m_key in grouped_pairs
-    ]
-    ax.set_xticks(x_positions)
-    ax.set_xticklabels(axis_labels, fontsize=9, fontweight="bold")
-    ax.set_ylabel("Metric Evaluation Scores", fontsize=11)
-    ax.set_ylim(-0.05, 1.05)
-    ax.grid(axis="y", linestyle="--", alpha=0.5)
+    if mode == "most_recent":
+        start_year = max_year - window_size + 1
+        pooled_df = df.filter(pl.col("year").is_between(start_year, max_year))
+        return _calculate_core_representation(pooled_df)
 
-    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1), title="Evaluated Projects")
-    ax.set_title(
-        "Grouped Governance Parallel Coordinates Structural Vector",
-        fontsize=13,
-        fontweight="bold",
-        pad=20,
-    )
-
-    plt.tight_layout()
-    plt.savefig(
-        str(output_dir / "combined_grouped_parallel_coordinates.png"),
-        dpi=300,
-        bbox_inches="tight",
-    )
-    plt.close()
+    elif mode == "all_windows":
+        min_year = df.select(pl.col("year").min()).item()
+        results = {}
+        for end_year in range(min_year, max_year + 1):
+            start_year = end_year - window_size + 1
+            window_df = df.filter(pl.col("year").is_between(start_year, end_year))
+            results[end_year] = _calculate_core_representation(window_df)
+        return results
+    else:
+        raise ValueError(f"Unknown mode: {mode}")
 
 
-def plot_project_radars(
-    projects_stats: List[GovernanceProjectStats], output_dir: Path
-) -> None:
-    """Generates proportional nested radar charts.
-
-    Splits total polar space uniformly by amount of unique Governance Stats,
-    then subdivides each allocation block by its respective nested metrics list,
-    leaving visual margin gaps between parent groupings.
+def calculate_known_groups_validity(
+    project_records: List[GovernanceProjectStats],
+    ordered_keys: List[str],
+) -> KnownGroupsValidationResult:
     """
-    radar_dir = output_dir / "radar_charts"
-    radar_dir.mkdir(exist_ok=True)
-
-    # Resolve parent stats layout tracking lists
-    grouped_pairs = _extract_grouped_metric_labels(projects_stats)
-    if not grouped_pairs:
-        return
-
-    parent_stats = sorted(list({pair[0] for pair in grouped_pairs}))
-    num_parents = len(parent_stats)
-
-    # Setup structural margins (allocating 15 degrees per gap boundary spacing)
-    gap_margin_radians = np.radians(15.0)
-    total_gap_allowance = gap_margin_radians * num_parents
-    remaining_pool_arc = (2 * np.pi) - total_gap_allowance
-
-    # Share arc evenly across core items blocks
-    arc_per_parent = remaining_pool_arc / num_parents
-
-    # 1. Map angular coordinates dynamically
-    angles_list = []
-    labels_list = []
-
-    current_cursor_angle = 0.0
-
-    for p_stat in parent_stats:
-        child_metrics = [pair[1] for pair in grouped_pairs if pair[0] == p_stat]
-        num_children = len(child_metrics)
-
-        # Subdivide parent arc slice equally across inner statistics metrics count
-        sub_arc_step = arc_per_parent / max(1, num_children)
-
-        for idx, m_key in enumerate(child_metrics):
-            # Place coordinate in center of child's sub-slice assignment
-            target_angle = (
-                current_cursor_angle + (idx * sub_arc_step) + (sub_arc_step / 2.0)
-            )
-            angles_list.append(target_angle)
-
-            label_text = f"{p_stat}\n({m_key})" if p_stat != m_key else p_stat
-            labels_list.append(label_text)
-
-        current_cursor_angle += arc_per_parent + gap_margin_radians
-
-    # Close polar geometric render arrays seamlessly
-    closed_angles = angles_list + [angles_list[0]]
-
-    # 2. Render charts per project
-    for p_obj in projects_stats:
-        values = []
-        for stat_name, metric_key in grouped_pairs:
-            if (
-                stat_name in p_obj.items
-                and metric_key in p_obj.items[stat_name].metrics
-            ):
-                vals = list(p_obj.items[stat_name].metrics[metric_key].values())
-                values.append(np.mean(vals) if vals else 0.0)
-            else:
-                values.append(0.0)
-        closed_values = values + [values[0]]
-
-        fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
-        ax.set_theta_offset(np.pi / 2)
-        ax.set_theta_direction(-1)
-
-        ax.set_xticks(angles_list)
-        ax.set_xticklabels(labels_list, color="#2c3e50", size=9, weight="bold")
-        ax.set_ylim(0, 1.0)
-
-        # Adjust label margins and text bounding collisions
-        ax.tick_params(axis="x", pad=22)
-
-        # Plot structural trace path mappings
-        ax.plot(
-            closed_angles,
-            closed_values,
-            color="#1f77b4",
-            linewidth=2,
-            linestyle="solid",
-        )
-        ax.fill(closed_angles, closed_values, color="#1f77b4", alpha=0.18)
-
-        # Grid system aesthetics lines
-        ax.set_rlabel_position(0)
-        ax.set_yticks([0.2, 0.4, 0.6, 0.8, 1.0])
-        ax.set_yticklabels(["0.2", "0.4", "0.6", "0.8", "1.0"], color="grey", size=9)
-
-        ax.set_title(
-            f"{p_obj.project_name} - Proportional Governance Profile",
-            fontsize=13,
-            fontweight="bold",
-            pad=30,
-        )
-
-        safe_name = "".join(
-            c if c.isalnum() else "_" for c in p_obj.project_name
-        ).lower()
-        plt.savefig(
-            str(radar_dir / f"proportional_radar_{safe_name}.png"),
-            dpi=300,
-            bbox_inches="tight",
-        )
-        plt.close()
-
-
-# =====================================================================
-# Central Analytical Orchestration Pipeline Engine
-# =====================================================================
-
-
-def show_governance_statistics(
-    projects: List[IndividualProjectContext], output_dir: Path
-) -> None:
-    """Calculates all metrics exactly once, writing visualizations and summaries."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Definitive Computation Context Mapping Pipeline
-    computation_registry = {
-        "Independence": compute_independence_hhi_per_year,
-        "Pluralism": compute_pluralism_author_gini_per_year,
-        "Representation": compute_representation_comment_gini_per_year,
-        "Decentralization Decision-Making": compute_centralization_metrics_per_year,
-        "Autonomous Participation": compute_newcomers_onboarding_per_year,
+    Groups metrics into archetypes and executes statistical validity tests.
+    Returns a structured data container holding zero plotting dependencies.
+    """
+    group_mapping = {
+        "JavaScript": "Community",
+        "Kubernetes": "Community",
+        "NumPy": "Community",
+        "Pandas": "Community",
+        "Python": "Community",
+        "Rust": "Community",
+        "Kotlin": "Corporate",
+        "OpenJDK": "Corporate",
+        "Swift": "Corporate",
+        "C++": "Corporate",
     }
 
-    # 1. Pipeline Calculation Phase
+    # Extract active dimensions present across records
+    present_dims = {dim for p in project_records for dim in p.metrics}
+    dimensions = [dim for dim in ordered_keys if dim in present_dims]
+
+    records_list = []
+    for p_obj in project_records:
+        row = {
+            "Project": p_obj.project_name,
+            "Group": group_mapping.get(p_obj.project_name, "Unknown"),
+        }
+        for dim in dimensions:
+            row[dim] = p_obj.pooled_metrics.get(dim, 0.0)
+        records_list.append(row)
+
+    df_all = pl.DataFrame(records_list)
+    df_test = df_all.filter(pl.col("Group").is_in(["Community", "Corporate"]))
+
+    validity_rows = []
+    group_data = {}
+
+    for dim in dimensions:
+        comm_vals = (
+            df_test.filter(pl.col("Group") == "Community")
+            .select(dim)
+            .to_series()
+            .to_numpy()
+        )
+        corp_vals = (
+            df_test.filter(pl.col("Group") == "Corporate")
+            .select(dim)
+            .to_series()
+            .to_numpy()
+        )
+
+        # Store arrays for downstream plotting
+        group_data[dim] = {"Community": comm_vals, "Corporate": corp_vals}
+
+        mean_comm, mean_corp = np.mean(comm_vals), np.mean(corp_vals)
+        median_comm, median_corp = np.median(comm_vals), np.median(corp_vals)
+
+        # Better small-sample Mann-Whitney calculation
+        if len(comm_vals) > 0 and len(corp_vals) > 0:
+            u_stat, p_val = stats.mannwhitneyu(
+                comm_vals, corp_vals, alternative="two-sided", method="exact"
+            )
+
+            std_comm, std_corp = np.std(comm_vals, ddof=1), np.std(corp_vals, ddof=1)
+            denom = len(comm_vals) + len(corp_vals) - 2
+            pooled_std = (
+                np.sqrt(
+                    (
+                        ((len(comm_vals) - 1) * std_comm**2)
+                        + ((len(corp_vals) - 1) * std_corp**2)
+                    )
+                    / denom
+                )
+                if denom > 0
+                else 0.0
+            )
+            cohen_d = (mean_comm - mean_corp) / pooled_std if pooled_std != 0 else 0.0
+        else:
+            p_val = 1.0
+            cohen_d = 0.0
+
+        # Tiered verification threshold for Small-N constraints
+        if p_val < 0.05:
+            is_valid = "Yes (p < 0.05)"
+        elif abs(cohen_d) >= 0.8:
+            is_valid = f"Practical (d = {round(cohen_d, 2)})"
+        else:
+            is_valid = "No"
+
+        validity_rows.append(
+            {
+                "Governance Dimension": dim,
+                "Corporate Mean": round(mean_corp, 4),
+                "Corporate Median": round(median_corp, 4),
+                "Community Mean": round(mean_comm, 4),
+                "Community Median": round(median_comm, 4),
+                "p-value": round(p_val, 4),
+                "Cohen's d": round(cohen_d, 4),
+                "Discriminant Validity Status": is_valid,
+            }
+        )
+
+    return KnownGroupsValidationResult(
+        ordered_keys=ordered_keys,
+        dimensions=dimensions,
+        validity_rows=validity_rows,
+        group_data=group_data,
+    )
+
+
+def get_governance_statistics(
+    projects: List[IndividualProjectContext],
+) -> Tuple[List[GovernanceProjectStats], List[str], KnownGroupsValidationResult]:
+    """Calculates flat trend lines and robust multi-year pooled profiles over all data assets."""
+
+    computation_registry = {
+        "Independence": compute_independence_hhi,
+        "Pluralism": compute_pluralism_author_gini,
+        "Representation": compute_representation_comment_gini,
+        "Decentralized Decision-Making": compute_centralization_metrics,
+        "Autonomous Participation": compute_newcomers_onboarding,
+    }
+
+    ordered_keys = list(computation_registry.keys())
     project_records: List[GovernanceProjectStats] = []
 
     for ctx in projects:
@@ -758,56 +539,17 @@ def show_governance_statistics(
         project_container = GovernanceProjectStats(project_name=ctx.project_name)
 
         for stat_domain, compute_fn in computation_registry.items():
-            try:
-                yearly_results = compute_fn(ctx)
-                if yearly_results:
-                    stat_item = project_container.get_or_create_item(stat_domain)
-                    for year, metrics_dict in yearly_results.items():
-                        for metric_name, score in metrics_dict.items():
-                            if metric_name not in stat_item.metrics:
-                                stat_item.metrics[metric_name] = {}
-                            stat_item.metrics[metric_name][year] = score
-            except Exception as ex:
-                logging.error(
-                    f"Failed pipeline calculations for domain {stat_domain} on {ctx.project_name}: {ex}"
-                )
+            # 1. Timeline Breakdown: window_size=1 across historical slices maps exactly to separate annual datapoints
+            yearly_results = compute_fn(ctx, window_size=1, mode="all_windows")
+            if yearly_results:
+                project_container.metrics[stat_domain] = yearly_results
+
+            # 2. Pooled Matrix: window_size=5 tracks a block snapshot for heatmaps, parallel trends, and tabular indices
+            pooled_result = compute_fn(ctx, window_size=5, mode="most_recent")
+            project_container.pooled_metrics[stat_domain] = pooled_result
 
         project_records.append(project_container)
 
-    # 2. Rendering Plotting Execution Phase
-    print("Executing visualization generation tasks over grouped structural records...")
-    plot_consolidated_line_charts(project_records, output_dir)
-    plot_combined_heatmap(project_records, output_dir)
-    plot_combined_parallel_coordinates(project_records, output_dir)
-    plot_project_radars(project_records, output_dir)
+    known_groups_result = calculate_known_groups_validity(project_records, ordered_keys)
 
-    # 3. Output Aggregations Data Frame Tables Phase
-    grouped_pairs = _extract_grouped_metric_labels(project_records)
-    table_headers = [f"{s} ({m})" if s != m else s for s, m in grouped_pairs]
-    table_data = {"Governance Domain Framework Structure": table_headers}
-
-    for p_record in project_records:
-        means = []
-        for stat_name, metric_key in grouped_pairs:
-            if (
-                stat_name in p_record.items
-                and metric_key in p_record.items[stat_name].metrics
-            ):
-                vals = list(p_record.items[stat_name].metrics[metric_key].values())
-                means.append(round(np.mean(vals), 4) if vals else 0.0)
-            else:
-                means.append(0.0)
-        table_data[p_record.project_name] = means
-
-    summary_df = pl.DataFrame(table_data)
-
-    with pl.Config(
-        tbl_formatting="markdown", tbl_hide_dataframe_shape=True, tbl_rows=-1
-    ):
-        (output_dir / "governance_statistics.md").write_text(
-            str(summary_df), encoding="utf-8"
-        )
-
-    print(
-        f"Data calculations pipeline terminated successfully. Files written to: {output_dir}"
-    )
+    return project_records, ordered_keys, known_groups_result

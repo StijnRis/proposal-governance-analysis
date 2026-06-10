@@ -2,25 +2,52 @@
     "abetterinternet": [
         "abetterinternet letsencrypt"
     ],
+    "aboutcode": [
+        "aboutcode data",
+        "aboutcode org"
+    ],
+    "accenture": [
+        "accenture acons apart"
+    ],
     "acm": [
-        "acm chapter at augsburg university"
+        "acm chapter at augsburg university",
+        "acm uiuc"
+    ],
+    "acsone": [
+        "acsone nv"
+    ],
+    "adobe": [
+        "adobe research",
+        "adobe web platform",
+        "software engineer at adobe"
     ],
     "aetna": [
         "aetna cvs health"
+    ],
+    "agwa": [],
+    "agwa labs": [
+        "agwa forks",
+        "agwa old"
     ],
     "akamai": [
         "akamai technologies",
         "lead principal engineer at akamai lke enterprise"
     ],
     "akuity": [
+        "akuity x",
         "akuity x microsoft"
+    ],
+    "alan technologies": [
+        "alan eu"
     ],
     "alibaba": [
         "alibaba clojure user group",
         "alibaba cloud",
         "alibaba cloud aliyun ack team kubernetes",
+        "alibaba ex",
         "alibaba group",
         "aliyun",
+        "aliyun ack team",
         "aliyun alibaba cloud container service"
     ],
     "amazon": [
@@ -31,29 +58,39 @@
         "amazon web services apache software foundation",
         "amazon web services aws",
         "amazon web services labs",
+        "amzn",
         "aws",
         "aws blueprints",
         "aws controllers for kubernetes",
         "aws eks",
+        "aws lambda",
         "aws samples",
-        "aws student builder groups at dgu"
+        "aws student builder groups at dgu",
+        "aws thinkbox"
+    ],
+    "amd": [
+        "amd global operations",
+        "amd rocm software"
     ],
     "amutable": [
         "amutable systems"
     ],
+    "anaconda": [
+        "anaconda formerly continuum analytics",
+        "formerly continuum analytics"
+    ],
     "andreasen horowitz": [
         "a z andreessen horowitz"
     ],
-    "android": [
-        "android developers italia",
-        "android jetpack",
-        "androidaudiomods"
+    "angular": [
+        "angularcrafts"
     ],
     "ansys": [
         "abaqus"
     ],
     "ant group": [
         "alipay",
+        "ant",
         "antgroup",
         "antgroup dragonflyoss"
     ],
@@ -65,22 +102,37 @@
         "anthropic magic string trigger refusal faefb b dee f d afc ccd edcf e ccc fb b c c",
         "anthropics"
     ],
-    "apache": [
+    "aonyx": [
+        "aonyx ai"
+    ],
+    "apache software foundation": [
+        "apache",
         "apache oceanbase",
         "apache spark on kubernetes",
         "apachecn",
         "collection of additional tools that are useful for folks using apache cloudstack",
         "the apache software foundation"
     ],
+    "apidia": [
+        "apidia net"
+    ],
     "apollo": [
         "apollo graph",
         "apollo graphql",
         "apollo meteor",
-        "apollographql"
+        "apollo nyan",
+        "apollographql",
+        "apolo us"
+    ],
+    "appium": [
+        "appiumtestdistribution"
     ],
     "apple": [
         "appcenter dashboard beta testers",
+        "apple developer academy",
         "apple developer academy ifce",
+        "apple open source mirror",
+        "apple whatwg participants",
         "tongji apple club"
     ],
     "applied mathematics at the university of colorado boulder": [
@@ -98,24 +150,73 @@
         "argoproj labs",
         "the helm project"
     ],
+    "argonne national laboratory": [
+        "anl"
+    ],
+    "arkworks": [
+        "arkworks rs"
+    ],
     "arm": [
         "arm rust lang",
         "arm software"
     ],
     "arrow": [
+        "arrow udf",
         "arrowbox"
+    ],
+    "artichoke": [
+        "artichoke ruby"
+    ],
+    "asdf community": [
+        "asdf version manager"
     ],
     "astral": [
         "astral sh",
         "astral sh openai",
+        "astral software",
         "astraw"
     ],
+    "async": [
+        "async email",
+        "async library",
+        "async rs",
+        "asyncio",
+        "asyncio docs"
+    ],
     "atlassian": [
+        "atlassian corporation",
         "canva ex atlassian",
         "trello"
     ],
+    "aurora": [
+        "aurora company",
+        "aurora editor",
+        "aurora open source"
+    ],
+    "australian national university": [
+        "anu biological data science institute",
+        "anu open science"
+    ],
     "australiapost": [
         "post"
+    ],
+    "autodesk": [
+        "autodesk research"
+    ],
+    "avalonia": [
+        "avalonia ui",
+        "avaloniaui"
+    ],
+    "awesome": [
+        "awesome rust cloud native",
+        "awesome webextension"
+    ],
+    "azul systems": [
+        "azul",
+        "azul research"
+    ],
+    "baidu": [
+        "baidu efe team"
     ],
     "baillie": [
         "baillie gifford"
@@ -124,22 +225,64 @@
         "bangalore ruby user group",
         "bangalorerb"
     ],
+    "bbc": [
+        "bbc micro bit"
+    ],
+    "behave": [
+        "behave contrib"
+    ],
     "belkadan": [
         "belkadan software"
+    ],
+    "berkeley institute for data science": [
+        "berkeley cdss",
+        "berkeley neuroeconomics",
+        "berkeleylab"
+    ],
+    "bevy engine": [
+        "bevy foundation"
+    ],
+    "bidmc division of digital psychiatry": [
+        "bidmcdigitalpsychiatry"
+    ],
+    "big eye deers": [
+        "bigeyedeers"
+    ],
+    "bigeye deers": [],
+    "binary birds": [
+        "binarybirds"
     ],
     "bit": [
         "bit prepared",
         "bitbento"
     ],
     "bitcoin": [
-        "bitcoinj"
+        "bitcoin in go",
+        "bitcoin optech",
+        "bitcoin transcripts",
+        "bitcoinj",
+        "bitcoinjs"
     ],
     "bits pilani": [
         "department of visual media bits pilani",
         "gdsc bitsp"
     ],
-    "bloomberg": [
-        "bloomberg lp"
+    "block": [
+        "block open source",
+        "block protocol",
+        "blockprotocol"
+    ],
+    "bloomberg l p": [
+        "bloomberg",
+        "bloomberg lp",
+        "bloomberg python infrastructure"
+    ],
+    "blue spire": [
+        "bluespire"
+    ],
+    "bmw": [
+        "bmw group",
+        "critical techworks bmw group"
     ],
     "bobadilla": [
         "bobadilla tech"
@@ -148,20 +291,49 @@
         "booking com",
         "bookingcom"
     ],
+    "boost org": [
+        "boost c libraries userver",
+        "boost cmake",
+        "boost consultant",
+        "boost consulting",
+        "boost foundation",
+        "boost gil",
+        "boostgsoc",
+        "boostjp",
+        "boostport",
+        "boostpro",
+        "boostpro computing"
+    ],
+    "brave software": [
+        "brave"
+    ],
+    "brice": [
+        "brice xyz"
+    ],
     "broadcom": [
         "ex pivotal ex vmware",
         "heptio now part of vmware",
         "pivotal r d kubernetes",
-        "vmware",
         "vmware broadcom",
         "vmware by broadcom",
-        "vmware cloud native apps",
-        "vmware tanzu"
+        "vmware cloud native apps"
     ],
     "brookhavennationallaboratory": [
         "bnl",
         "brookhaven national laboratory nsls ii",
         "nsls at brookhaven national lab"
+    ],
+    "brown university": [
+        "brown",
+        "brown cs",
+        "brown university band",
+        "brown university plt"
+    ],
+    "brushed type": [
+        "brushedtype"
+    ],
+    "bytecode alliance": [
+        "bytecodealliance"
     ],
     "bytedance": [
         "bitdance",
@@ -169,13 +341,26 @@
         "bytedance volcengine cilium",
         "https www bytedance com"
     ],
-    "calpoly": [
-        "cal poly san luis obispo"
+    "c": [
+        "c language"
+    ],
+    "cal poly": [],
+    "cal poly slo": [
+        "cal poly san luis obispo",
+        "cal poly solar decathlon",
+        "calpoly"
     ],
     "camen design": [
         "camendesign"
     ],
+    "canva": [
+        "canvanauts"
+    ],
+    "capital one": [
+        "capitalone"
+    ],
     "carabiner": [
+        "carabiner dev",
         "carabiner dev uservers",
         "carabiner systems"
     ],
@@ -194,7 +379,10 @@
     "centricular": [
         "centricular centricular"
     ],
-    "cern": [],
+    "cern": [
+        "cern mobile application",
+        "cern next generation triggers"
+    ],
     "chainguard": [
         "chainguard dev",
         "chainguard images"
@@ -204,6 +392,9 @@
     ],
     "changeset": [
         "changeset consulting"
+    ],
+    "chia network": [
+        "chia net"
     ],
     "chronosphere": [
         "chronosphereio"
@@ -217,6 +408,21 @@
         "cisco systems",
         "splunk"
     ],
+    "cjkay": [
+        "cjkay dev"
+    ],
+    "clojure": [
+        "clojurebridge berlin",
+        "clojurians"
+    ],
+    "cloud foundry": [
+        "cloud foundry community",
+        "cloud foundry foundation",
+        "cloud foundry incubator",
+        "cloud foundry sample applications",
+        "cloudfoundry",
+        "pivotal cloud foundry"
+    ],
     "cloud native computing foundation": [
         "aeraki mesh",
         "agones",
@@ -229,7 +435,26 @@
         "chaos mesh",
         "cilium",
         "client go",
+        "cloud native ai",
+        "cloud native application bundles",
+        "cloud native architecture community",
+        "cloud native books",
+        "cloud native brasil",
+        "cloud native community china",
+        "cloud native computing foundation (cncf)",
+        "cloud native computing foundation cncf",
+        "cloud native istanbul",
+        "cloud native latin america",
+        "cloud native london",
+        "cloud native nordics",
+        "cloud native rejekts",
+        "cloud native taiwan user group",
         "cncf",
+        "cncf jp",
+        "cncf kubernetes",
+        "cncf linuxfoundation",
+        "cncf maintainers",
+        "cncf technical advisory groups",
         "cni",
         "cni genie",
         "confidential containers",
@@ -261,7 +486,6 @@
         "hwameistor",
         "inlets",
         "inspektor gadget",
-        "isovalent",
         "isovalent at cisco",
         "isovalent head of docs kubernetes chair emeritus",
         "istio",
@@ -425,31 +649,8 @@
         "weaveworks"
     ],
     "cloudflare": [],
-    "cloudfoundry": [
-        "cloud foundry community",
-        "cloud foundry incubator",
-        "pivotal cloud foundry"
-    ],
-    "cloudnative": [
-        "cloud native ai",
-        "cloud native application bundles",
-        "cloud native architecture community",
-        "cloud native books",
-        "cloud native brasil",
-        "cloud native community china",
-        "cloud native computing foundation (cncf)",
-        "cloud native computing foundation cncf",
-        "cloud native istanbul",
-        "cloud native latin america",
-        "cloud native london",
-        "cloud native nordics",
-        "cloud native rejekts",
-        "cloud native taiwan user group",
-        "cncf jp",
-        "cncf kubernetes",
-        "cncf linuxfoundation",
-        "cncf maintainers",
-        "cncf technical advisory groups"
+    "cloudsmith": [
+        "cloudsmith io"
     ],
     "clowdhaus": [
         "clowd haus"
@@ -462,27 +663,52 @@
         "cnuopensource"
     ],
     "cockroachlabs": [],
+    "code hive tx": [
+        "codehivetx"
+    ],
     "codecentric": [
         "codecentric ag"
+    ],
+    "coding train": [
+        "codingtrain"
     ],
     "coinbase": [
         "coinbase tenable accurics infracloud litmuschaos openebs"
     ],
+    "college of software engineering": [
+        "college of software engineering southeast university"
+    ],
     "comcast": [
         "boingo wireless"
+    ],
+    "compose specification": [
+        "compose visual designer"
+    ],
+    "composition specifications": [
+        "compositional it"
     ],
     "confighub": [
         "confighub kubecon",
         "confighubai"
     ],
+    "connectify": [
+        "connectify speedify"
+    ],
     "controlplane": [
+        "controlplane enterprise for flux cd",
         "controlplaneio"
     ],
     "cornell": [
         "cornell university"
     ],
+    "corrode": [
+        "corrode rust consulting"
+    ],
     "cosmo consult": [
         "cosmoconsult"
+    ],
+    "coursera": [
+        "coursera app platform"
     ],
     "credit karma": [
         "creditkarma"
@@ -490,15 +716,26 @@
     "cubyte": [
         "cubyte oss"
     ],
+    "cumbuca dev": [
+        "cumbucadev"
+    ],
     "daocloud": [
+        "daocloud co",
         "daocloud co shanghai",
         "daocloud opensource"
+    ],
+    "dassault systèmes": [
+        "dassault syst mes",
+        "dassault syst mes biovia"
     ],
     "datadog": [
         "datadoghq"
     ],
     "death by escalator": [
         "deathbyescalator"
+    ],
+    "deepl": [
+        "deeplcom"
     ],
     "defense unicorns": [
         "defenseunicorns",
@@ -509,6 +746,10 @@
     ],
     "dell": [
         "dell emc"
+    ],
+    "deloitte": [
+        "deloitte digital",
+        "deloitte va"
     ],
     "deno": [
         "deno land"
@@ -538,8 +779,11 @@
         "docker samples",
         "go docker"
     ],
-    "eclipse foundation": [
+    "eclipse": [
         "ceylon",
+        "eclipse foundation",
+        "eclipse iceoryx",
+        "eclipse openj",
         "jakarta ee",
         "vert x"
     ],
@@ -577,40 +821,94 @@
     "evident solutions": [
         "evidentsolutions"
     ],
+    "expedia": [
+        "expedia group"
+    ],
+    "expressjs": [
+        "express"
+    ],
     "externalsecrets": [
         "external secrets"
     ],
+    "f software foundation repositories": [
+        "f community project incubation space"
+    ],
     "facebook": [
         "facebook instagram",
+        "facebook research",
         "fb",
-        "meta",
-        "meta platforms",
         "whatsapp"
     ],
     "fastapi": [
         "fastapi cloud",
+        "fastapi labs",
         "fastapilabs"
     ],
     "fedora": [
+        "fedora brasil",
         "fedora cloud sig",
         "fedora eln",
         "fedora infrastructure",
         "fedora iot",
-        "fedora livecd tools"
+        "fedora livecd tools",
+        "fedora python",
+        "fedora python sig",
+        "fedora static analysis"
     ],
     "fermyon": [
         "fermyon technologies",
         "spinframework"
     ],
+    "fiedka": [
+        "fiedka coalmines platform system interface"
+    ],
+    "filecoin": [
+        "filecoin foundation"
+    ],
+    "flask community work group": [
+        "flask admin",
+        "flask conf",
+        "flaskcon"
+    ],
+    "flutter": [
+        "flutter dart open source",
+        "flutter mumbai"
+    ],
+    "flux community": [
+        "flux framework",
+        "flux harmonic",
+        "fluxfederation"
+    ],
+    "flying circus": [
+        "flying circus internet operations"
+    ],
+    "folia": [
+        "folia app"
+    ],
     "formbound": [
         "formbound ab"
     ],
+    "fourth watch software lc": [
+        "fourth watch bcs lc"
+    ],
     "freebsd": [
         "freebsd cloud tech",
+        "freebsd docker",
+        "freebsddesktop",
         "the freebsd project rabbitmq"
+    ],
+    "freecodecamp org": [
+        "freecodecamp alumni network",
+        "freecodecamp delhi"
+    ],
+    "freedom of the press foundation": [
+        "freedomofpress"
     ],
     "freexian": [
         "freexian debian ubuntu"
+    ],
+    "freifunk": [
+        "freifunk saar"
     ],
     "ftsrg": [
         "bme mit ftsrg automated software engineering homework",
@@ -625,28 +923,63 @@
         "furiosa ai kaist cp",
         "furiosaai"
     ],
+    "g data cyberdefense ag": [
+        "gdatasoftwareag"
+    ],
     "g-research": [
         "g research",
         "g research contributor armada testkube"
     ],
-    "getsentry": [
-        "getsentry sentry io"
+    "galaxy project": [
+        "galaxyp",
+        "galaxyproject"
+    ],
+    "geico": [
+        "geico tech"
+    ],
+    "gentoo linux": [
+        "gentoo",
+        "gentoo ansible",
+        "gentoo crate dists",
+        "gentoo haskell project",
+        "gentoo perl",
+        "gentoo repository mirrors",
+        "gentoo zh"
+    ],
+    "georgia institute of technology": [
+        "georgia tech",
+        "georgiatech"
     ],
     "giant swarm": [
         "giantswarm"
     ],
+    "github": [
+        "github actions",
+        "github auxiliary",
+        "github craftwork",
+        "github field day",
+        "github former",
+        "github py"
+    ],
     "gitlab": [
+        "gitlab org",
         "gitlabhq"
     ],
     "godaddy": [
         "software engineer v godaddy"
     ],
-    "golang": [
-        "golang guadalajara",
-        "golang taiwan",
-        "golangvan"
-    ],
     "google": [
+        "android",
+        "android almer a",
+        "android developers italia",
+        "android development",
+        "android gaming",
+        "android jetpack",
+        "android kxxt",
+        "android workloads",
+        "androidaudiomods",
+        "androiddevfr",
+        "androidroot",
         "api ai",
         "chromium",
         "deepmind",
@@ -657,15 +990,33 @@
         "gdg pisa google developer group",
         "gmail",
         "go",
+        "golang",
+        "golang china contributor club",
+        "golang guadalajara",
+        "golang korea",
+        "golang taiwan",
+        "golangvan",
+        "google apigee",
         "google chrome",
         "google cloud",
         "google cloud platform",
+        "google deepmind",
         "google developer group italia",
+        "google developer student clubs pccoe",
+        "google developers group krak w",
+        "google earth engine community",
+        "google global dart hackathon prague",
         "google groups",
         "google kubernetes",
+        "google research",
+        "google stadia",
+        "google uk",
+        "google v",
         "google youtube",
+        "googlechrome",
         "googlecloudplatform",
         "googlecontainertools",
+        "googledeveloperexperts",
         "googlemail",
         "googlers",
         "looker",
@@ -673,6 +1024,9 @@
         "nest",
         "waze",
         "youtube"
+    ],
+    "gorails com": [
+        "gorails screencasts"
     ],
     "gradle": [
         "gradle technologies",
@@ -725,6 +1079,7 @@
     "huawei": [
         "huawei cloudnative",
         "huawei dresden research center",
+        "huawei research",
         "huawei technologies",
         "huawei technologies co",
         "huaweiclouddeveloper"
@@ -732,11 +1087,21 @@
     "hudson trading": [
         "hudson river trading"
     ],
+    "hugging face": [
+        "huggingface"
+    ],
+    "hummingbird": [
+        "hummingbird community"
+    ],
     "humy": [
         "humy ai"
     ],
     "hydraulic": [
         "hydraulic software"
+    ],
+    "hyundai motor group": [
+        "hyundai mobis",
+        "hyundai motors europe"
     ],
     "ibm": [
         "ansible",
@@ -748,13 +1113,17 @@
         "ibm cloud functions",
         "ibm contribs",
         "ibm india pvt",
+        "ibm isdl",
+        "ibm linux technology center",
+        "ibm ltc",
         "ibm research",
         "ibm research japan",
+        "ibm runtime technologies",
+        "ibmresearch",
         "inktank",
         "international business machines",
         "quadrant",
         "quay",
-        "red hat",
         "red hat ansible",
         "red hat communities of practice",
         "red hat demo platform",
@@ -778,7 +1147,6 @@
         "red hat s openshift virtualization upstream supplementals",
         "red hat storage",
         "red hat vllm project",
-        "redhat",
         "redhat ci",
         "redhatinsights",
         "redhatofficial",
@@ -825,14 +1193,29 @@
         "inrialpes"
     ],
     "intel": [
+        "intel corporation",
         "intellabs",
         "intellection"
     ],
     "invited expert": [
         "invited expert babel"
     ],
-    "itmouniversity": [
-        "itmo university ctlab"
+    "iqlusion": [
+        "iqlusion io",
+        "iqlusioninc"
+    ],
+    "isovalent": [
+        "isovalent at isovalent head of docs"
+    ],
+    "itmo university": [
+        "itmo",
+        "itmo fcsr",
+        "itmo university ctlab",
+        "itmouniversity"
+    ],
+    "javascript": [
+        "javascript info",
+        "javascript ru"
     ],
     "jboss": [
         "jboss capedwarf",
@@ -849,6 +1232,9 @@
         "tinkering jetbrains",
         "vorpal jetbrains research"
     ],
+    "jitsi": [
+        "jitsi contrib"
+    ],
     "jnicklas": [
         "jnicklas consulting"
     ],
@@ -858,12 +1244,64 @@
     "jozu": [
         "jozu ai"
     ],
+    "jruby team": [
+        "jruby gradle"
+    ],
+    "julia lang": [
+        "julia"
+    ],
+    "julialang": [
+        "juliacn",
+        "juliadatabases",
+        "juliadocs",
+        "juliahep",
+        "juliaquantumcontrol",
+        "juliaservices",
+        "juliastaging",
+        "juliatraits"
+    ],
+    "juniper networks": [
+        "https github com juniper",
+        "juniper"
+    ],
     "jupyter": [
         "jupyter ai contrib",
+        "jupyter for education",
+        "jupyter hub",
+        "jupyter incubator",
+        "jupyter lab",
+        "jupyter widgets",
+        "jupytercalpoly",
+        "jupyterhealth",
+        "jupyterhub",
         "jupyterlab"
     ],
+    "juspay": [
+        "juspay technologies"
+    ],
+    "jwplayer": [
+        "jwp"
+    ],
+    "jython development": [
+        "jython tools"
+    ],
+    "kaist": [
+        "kaist concurrency and parallelism laboratory",
+        "kaist cp",
+        "kaist maclab"
+    ],
     "kasten": [
-        "kasten by veeam igeek"
+        "kasten by veeam igeek",
+        "kastenhq"
+    ],
+    "keraskorea": [
+        "keras korea"
+    ],
+    "khan academy": [
+        "khan"
+    ],
+    "khanovaskola": [
+        "khanova kola"
     ],
     "kinvolk": [
         "kinvolk microsoft"
@@ -875,8 +1313,22 @@
         "kotlin community",
         "kotlin for telegram libraries",
         "kotlin fosdem",
+        "kotlin foundation",
         "kotlingang",
         "san diego kotlin user group"
+    ],
+    "kraudcloud": [
+        "kraudcloud devguardio zetzit"
+    ],
+    "kth royal institute of technology": [
+        "kth rpl mobile robotics"
+    ],
+    "kuehne + nagel": [],
+    "kuehne nagel": [
+        "kuehne nagel ag co kg"
+    ],
+    "lawrence livermore national laboratory": [
+        "llnl"
     ],
     "leroy merlin": [
         "leroy merlin spain",
@@ -884,6 +1336,9 @@
     ],
     "lido": [
         "lidofinance"
+    ],
+    "linkedin": [
+        "linkedin corporation"
     ],
     "linux foundation": [
         "academy software foundation",
@@ -930,6 +1385,12 @@
     "lyft": [
         "envoy proxy cncf"
     ],
+    "macquarie university": [
+        "carpentries training macquarie university"
+    ],
+    "mailtower": [
+        "mailtower app"
+    ],
     "mam dev": [
         "and mam dev"
     ],
@@ -943,6 +1404,9 @@
         "mercedes benz",
         "mercedes benz group"
     ],
+    "meta": [
+        "meta platforms"
+    ],
     "microsoft": [
         "activision blizzard",
         "azure",
@@ -951,7 +1415,6 @@
         "azure microsoft",
         "azure samples",
         "dotnetio",
-        "github",
         "github beta",
         "github campus experts",
         "github for government",
@@ -959,12 +1422,12 @@
         "github security bug bounty",
         "github stars",
         "gnome github mirror",
-        "linkedin",
         "microsoft azure",
         "microsoft docs",
         "microsoft github",
         "microsoft kinvolk",
         "microsoft mvps",
+        "microsoft research",
         "mojang",
         "npm",
         "nuget",
@@ -999,18 +1462,47 @@
     "mozilla": [
         "mozilla campus clubs"
     ],
-    "nasa": [],
-    "nationaltaiwanuniversity": [
-        "national taiwan university ph d student"
+    "nager": [
+        "nager open source projects",
+        "nager software solutions"
+    ],
+    "nannou": [
+        "nannou org"
+    ],
+    "nanyang technological university": [
+        "nanyang technological university school of computer engineering"
+    ],
+    "nasa": [
+        "nasa planetary science github"
+    ],
+    "national taiwan university deparment of mechanical engineering": [
+        "national taiwan university ph d student",
+        "nationaltaiwanuniversity"
+    ],
+    "nec": [
+        "nec geospatial solutions part of nec sws uk"
     ],
     "nedap": [
         "nedap n v"
+    ],
+    "neovim": [
+        "neovim lua"
+    ],
+    "net platform": [
+        "net foundation",
+        "net ng"
+    ],
+    "netflix": [
+        "netflix techblog"
     ],
     "netfpga": [
         "netfpga github organization"
     ],
     "netty": [
         "the netty project"
+    ],
+    "neuralink": [
+        "neuralinkcorp"
     ],
     "newyorktimes": [
         "nytimes",
@@ -1042,6 +1534,10 @@
     "northcarolinastateuniversity": [
         "ncsu",
         "north carolina state university"
+    ],
+    "nvidia": [
+        "nvidia gameworks",
+        "nvidia research"
     ],
     "nymex": [
         "nymexdata circleci"
@@ -1091,20 +1587,55 @@
     "oxide computer company": [
         "oxidecomputer"
     ],
+    "palantir": [
+        "palantir technologies"
+    ],
+    "pallets": [
+        "pallets ecosystem"
+    ],
     "palo alto networks": [
         "bridgecrew",
         "cider security",
         "demisto",
         "twistlock"
     ],
+    "panic": [
+        "panicinc"
+    ],
+    "papra": [
+        "papra hq"
+    ],
+    "peking university": [
+        "peking university alibaba"
+    ],
     "penn state university": [
         "psu oit"
+    ],
+    "phocas software": [
+        "phocas it",
+        "phocassoftware"
+    ],
+    "phosphor": [
+        "phosphorjs"
+    ],
+    "php net": [
+        "php task runner",
+        "phpbrew",
+        "phpredis",
+        "phpsp",
+        "phputility"
     ],
     "pingcap": [
         "pingcap rust lang"
     ],
     "pitt": [
         "university of pittsburgh"
+    ],
+    "pivotal": [
+        "pivotal labs"
+    ],
+    "pke": [
+        "pke sistemi"
     ],
     "pmmp": [
         "pmmp repo"
@@ -1120,6 +1651,9 @@
     ],
     "polars": [
         "pola rs"
+    ],
+    "postman": [
+        "postman engineering"
     ],
     "preferrednetworks": [
         "pfnet research",
@@ -1177,41 +1711,168 @@
     "reactnative": [
         "react native community"
     ],
+    "red hat": [
+        "redhat"
+    ],
     "replayio": [
         "replayio previously babel mozilla and firefox devtools"
     ],
     "replicated": [
         "replicated com"
     ],
+    "rizin organization": [
+        "rizin org"
+    ],
+    "rk systems": [
+        "rksystems"
+    ],
     "rkt": [
         "rkt archived see https github com rkt rkt issues"
+    ],
+    "roblox": [
+        "roblox service status"
+    ],
+    "root": [
+        "root consulting",
+        "roothack"
+    ],
+    "ros": [
+        "ros release repositories",
+        "ros tooling working groups"
+    ],
+    "ruby on rails": [
+        "ruby bench",
+        "ruby chan",
+        "ruby china",
+        "ruby concurrency",
+        "ruby config",
+        "ruby gnome project",
+        "ruby llvm",
+        "ruby rdf",
+        "rubyfloripa",
+        "rubygems",
+        "rubynative",
+        "rubynepal"
     ],
     "ruijl": [
         "ruijl research"
     ],
     "rust": [
+        "rust ads b",
+        "rust analyzer",
+        "rust and webassembly",
+        "rust async archived",
+        "rust bio",
+        "rust bitcoin community",
+        "rust blockchain",
+        "rust br",
+        "rust cli wg",
+        "rust community",
+        "rust computer vision",
+        "rust console",
+        "rust console rust tutorials",
+        "rust crdt",
+        "rust cross",
+        "rust crypto",
+        "rust cuda",
+        "rust dc",
+        "rust dev tools",
+        "rust docs",
+        "rust ds",
+        "rust dsp",
+        "rust embedded",
+        "rust embedded community",
+        "rust ethereum",
+        "rust ffi",
+        "rust for linux",
         "rust foundation",
         "rust foundation contractor",
+        "rust fuzzing authority",
+        "rust game development working group",
+        "rust gcc",
+        "rust gpu",
+        "rust graphics mages",
+        "rust in action",
+        "rust iot",
+        "rust ipfs",
+        "rust itertools",
         "rust lang",
+        "rust lang nursery",
         "rust lang rust tw",
         "rust leipzig",
+        "rust marker",
+        "rust ml",
+        "rust mobile",
+        "rust munich",
+        "rust ndarray",
+        "rust num",
         "rust nyc",
+        "rust ops",
         "rust osdev",
+        "rust programming language community discord",
         "rust project",
         "rust project rustnl hexcat",
+        "rust random",
+        "rust rocksdb",
+        "rust sci",
+        "rust secure code working group",
+        "rust serverless",
+        "rust swift",
+        "rust syndication",
+        "rust taiwan",
+        "rust threadpool",
+        "rust tutorials",
+        "rust tw",
+        "rust unofficial",
+        "rust usergroup dresden",
+        "rust uuid",
+        "rust ux",
+        "rust vienna",
         "rust vmm",
+        "rust web",
+        "rust websockets",
+        "rust windowing",
+        "rust windows working group",
+        "rust x",
+        "rust z richsee",
+        "rustaceans uk",
         "rustaudio",
-        "rustfoundation"
+        "rustbeginners",
+        "rustbridge",
+        "rustc dev",
+        "rustcon asia",
+        "rustfesteu",
+        "rustfoundation",
+        "rustgd",
+        "rustic games",
+        "rustlang en espa ol",
+        "rustlatam",
+        "rustls",
+        "rustnl",
+        "rustpython dev",
+        "rustsbi",
+        "rustsec"
     ],
-    "rwth": [
-        "rwth aachen university",
+    "rutgers university": [],
+    "rutgers university ieee": [
+        "rutgers open system solutions"
+    ],
+    "rwth aachen university": [
+        "rwth",
+        "rwth aachen",
+        "rwth aachen university institute for automation of complex power systems",
+        "rwth aachen university os research acs",
         "rwth acs"
+    ],
+    "saagarjha": [
+        "saagar jha s unofficial mirrors"
     ],
     "salesforce": [
         "clicksoftware",
         "demandware",
         "heroku",
         "mulesoft",
+        "salesforce research",
         "sfxd the salesforce discord exchange",
         "slack",
         "slack rs",
@@ -1219,37 +1880,89 @@
     ],
     "samoe": [],
     "samsung": [
+        "samsung electronics",
         "samsung electronics co",
+        "samsung research",
         "samsung research america",
         "samsung srr",
         "samsungslav"
+    ],
+    "sandia national laboratories": [
+        "sandia national labs"
     ],
     "sap": [
         "sap cloudfoundry",
         "sap customer experience",
         "sap samples",
         "sap se",
-        "sap signavio"
+        "sap signavio",
+        "sap via hybris"
     ],
     "satispay": [
         "satispay tech"
     ],
+    "scikit": [
+        "scikit beam",
+        "scikit hep project",
+        "scikit learn",
+        "scikit learn contrib",
+        "scikits"
+    ],
     "scisemi": [
         "sci semi"
+    ],
+    "seattle gnu linux conference": [
+        "seattle rs"
+    ],
+    "second half games": [
+        "second everyday",
+        "second spectrum",
+        "secondhalfgames"
     ],
     "secureai": [
         "secure ai"
     ],
     "seed messaging": [
-        "seed messaging platform"
+        "seed messaging platform",
+        "seed rs",
+        "seed up"
+    ],
+    "seedline capital email onechimad": [
+        "seedline capital email onechimad gmail com"
     ],
     "seequ": [
         "seequ oy"
     ],
+    "self employed": [
+        "self employed freelancer",
+        "self employed warsaw stock exchange"
+    ],
+    "semantic line breaks": [
+        "semantic org",
+        "semantic release",
+        "semantic rs"
+    ],
+    "senbax": [
+        "senbax senvend",
+        "senvend"
+    ],
+    "send a patch": [
+        "sendapatch"
+    ],
+    "sentry": [
+        "getsentry",
+        "getsentry sentry io"
+    ],
     "shopee": [
         "shopee ex alibaba ex baidu"
     ],
-    "siemens": [],
+    "shopify": [
+        "shopify engineering"
+    ],
+    "siemens": [
+        "siemens healthineers",
+        "siemens mobility"
+    ],
     "siteforge": [
         "siteforge io lumina gov"
     ],
@@ -1289,7 +2002,8 @@
         "space dynamics laboratory and nist"
     ],
     "spotify": [
-        "backstage"
+        "backstage",
+        "spotify engineering"
     ],
     "square": [
         "cash app",
@@ -1308,34 +2022,113 @@
     "stormmq": [
         "stormmq it limited"
     ],
+    "stripe": [
+        "stripe engineering"
+    ],
+    "stump window manager": [
+        "stumpware"
+    ],
+    "sublimecodeintel": [
+        "sublimelinter"
+    ],
     "sujitech": [
         "mask network"
+    ],
+    "sun yat sen university": [
+        "sun yat sen univiersity"
+    ],
+    "sunblaze ucb": [
+        "sunblazelab"
+    ],
+    "supabase": [
+        "supabase community"
+    ],
+    "supercharge": [
+        "supercharge ai"
     ],
     "supermoon": [
         "supermoon ai"
     ],
+    "surferseo": [
+        "surfer"
+    ],
     "suse": [
+        "suse linux",
         "suse linux products",
         "suse rancher",
         "suse software solutions spain sl"
     ],
+    "sweet js": [
+        "sweetalert",
+        "sweetapp"
+    ],
     "swift": [
+        "swift actions",
+        "swift calendar",
+        "swift community podcast",
+        "swift cowbox",
+        "swift de",
+        "swift developers japan",
+        "swift extras",
+        "swift ibm",
+        "swift immutabledata",
         "swift mail",
+        "swift montevideo",
+        "swift numerics workgroup",
         "swift on server",
+        "swift on server community",
+        "swift package index",
+        "swift rp",
+        "swift studio",
+        "swift tweets",
+        "swift unwrapped",
+        "swift weekly brief",
+        "swiftcoders",
+        "swiftdoc",
+        "swifter tips",
+        "swifteroid",
+        "swifterswift",
+        "swiftfiddle project",
+        "swiftgen",
+        "swiftgl",
+        "swiftists",
         "swiftjava",
         "swiftkit",
         "swiftlang",
+        "swiftmeetupbudapest",
         "swiftonfile",
+        "swiftperu",
+        "swiftq",
+        "swiftrex",
+        "swiftrocks",
+        "swiftscript",
+        "swiftuix",
+        "swiftviz",
+        "swiftwasm",
+        "swiftytesseract",
         "the swift programming language"
+    ],
+    "sydney linux user group": [
+        "sydney linux user group dependencies"
+    ],
+    "symfony": [
+        "symfonycorp"
     ],
     "sysart": [
         "sysart s r o"
     ],
     "tailscale": [],
+    "talkd ai": [
+        "talkdai"
+    ],
+    "tango controls core projects": [
+        "tangocms project"
+    ],
     "tasemulators": [
         "tas emulators on github"
     ],
     "tencent": [
+        "tencent cloud",
         "tencentcloudcontainerteam"
     ],
     "the forays": [
@@ -1364,17 +2157,64 @@
     "tngtechnology": [
         "tng technology consulting"
     ],
+    "tokyo university": [
+        "tokyo"
+    ],
+    "toml": [
+        "toml rs"
+    ],
+    "torchbox": [
+        "torch spyre",
+        "torchio"
+    ],
+    "tornadofx": [
+        "tornadoweb"
+    ],
     "torproject": [
         "the tor project"
     ],
+    "tox development team": [
+        "tox clients",
+        "tox rs"
+    ],
     "toyota": [
         "woven by toyota"
+    ],
+    "trail of bits": [
+        "trailofbits"
+    ],
+    "trifle": [
+        "trifle labs"
+    ],
+    "truthful technology": [
+        "truthfultechnology"
+    ],
+    "tsinghua university": [
+        "tsinghua",
+        "tsinghua university skyworks interest group",
+        "tsinghua university tuna association"
+    ],
+    "tsukuba": [
+        "tsukuba websci"
+    ],
+    "tu wien": [
+        "tu wien department of geodesy and geoinformation"
     ],
     "tudelft": [
         "tu delft",
         "tudelft pl"
     ],
+    "tum": [
+        "tum database group",
+        "tum taskforce"
+    ],
+    "tweedegolf": [
+        "tweede golf"
+    ],
     "twincl": [],
+    "twisted matrix labs": [
+        "twistedmatrix"
+    ],
     "two sigma": [
         "tsg",
         "two sigma investments",
@@ -1382,12 +2222,31 @@
     ],
     "uber": [
         "careem",
-        "postmates"
+        "postmates",
+        "uber engineering",
+        "uber open source"
+    ],
+    "ubisoft": [
+        "ubisoft montreal"
     ],
     "ubuntu": [
         "canonical",
         "canonical debate lab",
         "canonicalltd"
+    ],
+    "uc berkeley": [
+        "uc berkeley amsa chapter",
+        "uc berkeley cs",
+        "uc berkeley cs software engineering"
+    ],
+    "uchicago": [
+        "uchicago department of computer science"
+    ],
+    "uestc io": [
+        "uestc lug"
+    ],
+    "uk python association": [
+        "uk tex users"
     ],
     "umbrella code": [
         "umbrellacode"
@@ -1440,22 +2299,83 @@
         "uw cse",
         "uw hackers"
     ],
+    "vapor": [
+        "vapor community"
+    ],
+    "vcatechnology": [
+        "vcdevel"
+    ],
+    "vector informatik": [
+        "vectorware"
+    ],
+    "velocity residence": [
+        "velocitylimitless"
+    ],
     "viam": [
+        "viam labs",
         "viamrobotics"
     ],
+    "viaplay group": [
+        "viaplay"
+    ],
     "victoriametrics": [],
-    "vivosys": [
+    "video village": [
+        "videovillage"
+    ],
+    "vier": [
+        "vier cognitive voice gateway"
+    ],
+    "vilda": [
+        "vilda as"
+    ],
+    "vim jp": [
+        "vim openerp team",
+        "vimjas",
+        "vimtl"
+    ],
+    "virtual human interaction lab": [
+        "virtual ark"
+    ],
+    "vite": [
+        "vitest",
+        "vitest community"
+    ],
+    "vivid machine": [
+        "vividmachine"
+    ],
+    "vivo systems": [
+        "vivosys",
         "vivosys redocksoft ritzyed innertech"
     ],
+    "vllm": [
+        "vllm project"
+    ],
+    "vmware": [
+        "vmware tanzu"
+    ],
+    "void rs": [
+        "void software",
+        "voidlinux"
+    ],
     "volkswagen": [
+        "a volkswagen group company",
         "cariad se a volkswagen group company",
         "volkswagen vocs"
     ],
     "wasmer": [
         "wasmer io"
     ],
+    "web components community group": [
+        "web components preview"
+    ],
     "webkit": [
         "the webkit open source project"
+    ],
+    "webrtc io": [
+        "webrtc for the web"
+    ],
+    "wechatpy": [
+        "wechat sdk for go"
     ],
     "wellposed": [
         "wellposed com"
@@ -1466,13 +2386,23 @@
     "whatwg": [
         "cloudflare whatwg"
     ],
+    "willowtree": [
+        "willowtree digital canada",
+        "willowtreeapps"
+    ],
     "wingware": [
+        "wingtk",
         "wingware python ide"
+    ],
+    "winter of code nitk surathkal": [
+        "winter tech forum"
     ],
     "wiredash": [
         "wiredash com"
     ],
-    "wiseai": [
+    "wise ai": [
+        "wiseai",
+        "wiseaidotdev",
         "wiseaidotdev opensass"
     ],
     "witchof": [
@@ -1495,24 +2425,39 @@
         "xai"
     ],
     "xemacs": [
+        "xemacs org",
         "xemacs org and gnu mailman"
     ],
     "xgeeks": [
         "xgeekshq"
     ],
+    "xwiki labs": [
+        "xwiki contrib"
+    ],
     "yahoo": [
         "yahoo japan"
     ],
     "yandex": [
+        "yandex cloud",
+        "yandex research",
         "yanex"
+    ],
+    "yellow city tech": [
+        "yellow agents"
     ],
     "zalando": [
         "stups by zalando",
         "the zalando incubator",
         "zalando se"
     ],
+    "zato": [
+        "zatosource"
+    ],
     "zedindustries": [
         "zed industries"
+    ],
+    "zenseact": [
+        "zenact ai"
     ],
     "zettascale": [
         "zettascalelabs"

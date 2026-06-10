@@ -1,8 +1,10 @@
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
+from typing import Dict, List, Set, Tuple
 
 import polars as pl
 from diskcache import Cache
@@ -27,11 +29,11 @@ PUBLIC_DOMAINS = {
     "mail.com",
 }
 
-cache = Cache("../data/github_cache")
-
+# Simple, global disk cache instance
+cache = Cache("data/github_cache")
 
 # ==========================================
-# GITHUB API & CACHE LAYER
+# GITHUB API DATA FETCHER LAYER
 # ==========================================
 
 
@@ -45,13 +47,12 @@ def _extract_email_domain_company(email: str) -> str | None:
 
     extracted = tldextract.extract(domain_part)
     if extracted.domain:
-        if extracted.domain == "loewis":
-            print(f"⚠️ Detected 'loewis' domain in email '{email}'")
         return extracted.domain
 
 
+@cache.memoize(tag="_execute_graphql_request")
 def _execute_graphql_request(query: str, variables: dict | None = None) -> dict:
-    """Handles the network transmission and rate-limiting wrapper for GitHub GraphQL API."""
+    """Handles network transmission and rate-limiting for GitHub GraphQL API."""
     token = os.getenv("GITHUB_TOKEN")
     if not token:
         raise EnvironmentError(
@@ -103,7 +104,62 @@ def _execute_graphql_request(query: str, variables: dict | None = None) -> dict:
     return response_data.get("data", {})
 
 
-def _fetch_companies_graphql_batch(pending_emails: list[str]) -> dict[str, str | None]:
+def _extract_companies_from_github_nodes(
+    nodes: list[dict], search_term: str
+) -> set[str]:
+    """Extracts and cleans company and organization names from GitHub user nodes."""
+    if not nodes:
+        return set()
+
+    companies = set()
+    for node in nodes:
+        if node.get("username") == "Unknown":
+            continue
+        companies.update(_extract_companies_from_github_node(node))
+
+    return companies
+
+
+def _extract_companies_from_github_node(node: dict) -> set[str]:
+    """Extracts company profile text and explicit GitHub organization list memberships."""
+    if node is None:
+        return set()
+
+    companies = set()
+    pattern = r"[,@|]|\bpreviously\b|previous\b|\bprev\b|\band\b"
+
+    # 1. Parse corporate/company string field from profile
+    company_field = node.get("company")
+    if company_field:
+        raw_companies = re.split(pattern, company_field, flags=re.IGNORECASE)
+        for comp in raw_companies:
+            cleaned = comp.strip()
+            if cleaned:
+                companies.add(cleaned)
+
+    # 2. Extract structured user organization memberships
+    org_nodes = (
+        node.get("organizations", {}).get("nodes", [])
+        if node.get("organizations")
+        else []
+    )
+    for org in org_nodes:
+        if org and org.get("name"):
+            cleaned_org = org["name"].strip()
+            if cleaned_org:
+                companies.add(cleaned_org)
+
+    return companies
+
+
+# ==========================================
+# MEMOIZED BATCH FUNCTIONS
+# ==========================================
+
+
+def _fetch_companies_graphql_batch(
+    pending_emails: tuple[str, ...],
+) -> dict[str, list[str]]:
     """Queries the GitHub GraphQL API for a fully packed batch of missing emails."""
     results = {}
     query_fragments = []
@@ -117,7 +173,7 @@ def _fetch_companies_graphql_batch(pending_emails: list[str]) -> dict[str, str |
 
         query_fragments.append(
             f"email_{idx}: search(type: USER, query: ${var_name}, first: 1) {{ "
-            f"  nodes {{ ... on User {{ company }} }} "
+            f"  nodes {{ ... on User {{ company organizations(first: 10) {{ nodes {{ name }} }} }} }} "
             f"}}"
         )
 
@@ -128,30 +184,22 @@ def _fetch_companies_graphql_batch(pending_emails: list[str]) -> dict[str, str |
 
     for idx, email in enumerate(pending_emails):
         alias_key = f"email_{idx}"
-        company = None
         nodes = data_map.get(alias_key, {}).get("nodes", [])
-
-        if nodes and nodes[0].get("company"):
-            company = nodes[0]["company"].lstrip("@").strip()
-            if company:
-                cache.set(f"gh_company_email:{email}", company)
-                results[email] = company
-                continue
-
-        cache.set(f"gh_company_email:{email}", "")
-        results[email] = None
+        results[email] = list(_extract_companies_from_github_nodes(nodes, email))
 
     return results
 
 
 def _fetch_companies_by_username_batch(
-    pending_usernames: list[str],
-) -> dict[str, str | None]:
+    pending_usernames: tuple[str, ...],
+) -> dict[str, list[str]]:
     """Queries the GitHub GraphQL API for companies matching specific usernames directly."""
     results = {}
     query_fragments = []
     for idx, username in enumerate(pending_usernames):
-        query_fragments.append(f'user_{idx}: user(login: "{username}") {{ company }}')
+        query_fragments.append(
+            f'user_{idx}: user(login: "{username}") {{ company organizations(first: 10) {{ nodes {{ name }} }} }}'
+        )
 
     graphql_query = f"query {{ {' '.join(query_fragments)} }}"
     data_map = _execute_graphql_request(graphql_query)
@@ -159,25 +207,17 @@ def _fetch_companies_by_username_batch(
     for idx, username in enumerate(pending_usernames):
         alias_key = f"user_{idx}"
         user_node = data_map.get(alias_key)
-        company = None
+        companies = _extract_companies_from_github_node(user_node)
 
-        if user_node and user_node.get("company"):
-            company = user_node["company"].lstrip("@").strip()
-            if company:
-                cache.set(f"gh_company_user:{username}", company)
-                results[username] = company
-                continue
-
-        cache.set(f"gh_company_user:{username}", "")
-        results[username] = None
+        results[username] = list(companies)
 
     return results
 
 
 def _fetch_companies_by_fullname_batch(
-    pending_names: list[str],
-) -> dict[str, str | None]:
-    """Queries the GitHub GraphQL API for companies by full name using strongly-typed payload variables."""
+    pending_names: tuple[str, ...],
+) -> dict[str, set[str]]:
+    """Queries the GitHub GraphQL API for companies by full name."""
     results = {}
     query_fragments = []
     variables = {}
@@ -190,7 +230,7 @@ def _fetch_companies_by_fullname_batch(
 
         query_fragments.append(
             f"name_{idx}: search(type: USER, query: ${var_name}, first: 2) {{ "
-            f"  nodes {{ ... on User {{ company }} }} "
+            f"  nodes {{ ... on User {{ company organizations(first: 10) {{ nodes {{ name }} }} }} }} "
             f"}}"
         )
 
@@ -201,23 +241,8 @@ def _fetch_companies_by_fullname_batch(
 
     for idx, name in enumerate(pending_names):
         alias_key = f"name_{idx}"
-        company = None
         nodes = data_map.get(alias_key, {}).get("nodes", [])
-
-        if len(nodes) > 1:
-            print(
-                f"ℹ️ Multiple GitHub user nodes found matching the full name: '{name}'. Using the first match."
-            )
-
-        if nodes and nodes[0].get("company"):
-            company = nodes[0]["company"].lstrip("@").strip()
-            if company:
-                cache.set(f"gh_company_name:{name}", company)
-                results[name] = company
-                continue
-
-        cache.set(f"gh_company_name:{name}", "")
-        results[name] = None
+        results[name] = _extract_companies_from_github_nodes(nodes, name)
 
     return results
 
@@ -277,7 +302,6 @@ def enrich_project_contexts_with_companies(
         idents_df = ctx.person_identifiers
         persons_df = ctx.persons
 
-        # Setup base metadata states
         existing_affils_set = set(
             affils_df.select(["person_id", "organisation_id"]).iter_rows()
         )
@@ -293,20 +317,16 @@ def enrich_project_contexts_with_companies(
         )
         new_orgs_records, new_affils_records = [], []
 
-        # Prepare base dictionary tracking keys from person_identifiers
         rows = idents_df.to_dicts() if not idents_df.is_empty() else []
-        resolved_companies = {
+        resolved_companies: Dict[Tuple[int, str], Set[str]] = {
             (row["person_id"], str(row["identifier"]).strip()): set() for row in rows
         }
 
-        # Inject/ensure tracking keys exist for ALL known individuals inside ctx.persons
         person_rows = persons_df.to_dicts() if not persons_df.is_empty() else []
         for p_row in person_rows:
             p_id = p_row["person_id"]
             fallback_key = (p_id, "full_name_lookup")
-
-            has_existing_identifier = any(k[0] == p_id for k in resolved_companies)
-            if not has_existing_identifier:
+            if not any(k[0] == p_id for k in resolved_companies):
                 resolved_companies[fallback_key] = set()
 
         # ------------------------------------------------------------------
@@ -317,121 +337,86 @@ def enrich_project_contexts_with_companies(
             if "@" in ident and len(ident.split("@")) == 2:
                 domain_company = _extract_email_domain_company(ident)
                 if domain_company:
-                    row_key = (row["person_id"], ident)
-                    resolved_companies[row_key].add(domain_company)
+                    resolved_companies[(row["person_id"], ident)].add(domain_company)
 
         # ------------------------------------------------------------------
         # TACTIC 2: GitHub Graph API Lookups via Email Strings
         # ------------------------------------------------------------------
-        uncached_emails = []
-        for row in rows:
-            ident = str(row["identifier"]).strip()
-            if "@" in ident and len(ident.split("@")) == 2:
-                row_key = (row["person_id"], ident)
-                cache_key = f"gh_company_email:{ident}"
-
-                if cache_key in cache:
-                    cached_val = cache[cache_key]
-                    if cached_val:
-                        resolved_companies[row_key].add(cached_val)
-                else:
-                    uncached_emails.append(ident)
-
-        if uncached_emails:
-            unique_emails = list(set(uncached_emails))
+        emails = [
+            str(r["identifier"]).strip()
+            for r in rows
+            if "@" in str(r["identifier"]) and len(str(r["identifier"]).split("@")) == 2
+        ]
+        if emails:
+            unique_emails = sorted(list(set(emails)))
             for i in tqdm(
                 range(0, len(unique_emails), batch_size),
                 desc=f"📦 Fetching Email Batches ({ctx.project_name})",
-                unit="batch",
             ):
-                batch = unique_emails[i : i + batch_size]
+                batch = tuple(unique_emails[i : i + batch_size])
                 api_results = _fetch_companies_graphql_batch(batch)
 
                 for row_key, discovered in resolved_companies.items():
                     _, ident = row_key
                     if ident in api_results and api_results[ident]:
-                        discovered.add(api_results[ident])
+                        discovered.update(api_results[ident])
 
         # ------------------------------------------------------------------
         # TACTIC 3: GitHub Graph API Lookups via Username Attributes
         # ------------------------------------------------------------------
-        uncached_usernames = []
-        for row in rows:
-            ident = str(row["identifier"]).strip()
-            ident_type = str(row["identifier_type"]).lower()
-            domain = str(row.get("domain", "")).lower()
-
-            if domain == "github.com" and ident_type == "username":
-                row_key = (row["person_id"], ident)
-                cache_key = f"gh_company_user:{ident}"
-
-                if cache_key in cache:
-                    cached_val = cache[cache_key]
-                    if cached_val:
-                        resolved_companies[row_key].add(cached_val)
-                else:
-                    uncached_usernames.append(ident)
-
-        if uncached_usernames:
-            unique_usernames = list(set(uncached_usernames))
+        usernames = [
+            str(r["identifier"]).strip()
+            for r in rows
+            if str(r.get("domain", "")).lower() == "github.com"
+            and str(r["identifier_type"]).lower() == "username"
+        ]
+        if usernames:
+            unique_usernames = sorted(list(set(usernames)))
             for i in tqdm(
                 range(0, len(unique_usernames), batch_size),
                 desc=f"👤 Fetching Username Batches ({ctx.project_name})",
-                unit="batch",
             ):
-                batch = unique_usernames[i : i + batch_size]
+                batch = tuple(unique_usernames[i : i + batch_size])
                 api_results = _fetch_companies_by_username_batch(batch)
 
                 for row_key, discovered in resolved_companies.items():
                     _, ident = row_key
                     if ident in api_results and api_results[ident]:
-                        discovered.add(api_results[ident])
+                        discovered.update(api_results[ident])
 
         # ------------------------------------------------------------------
-        # TACTIC 4: GitHub Graph API Lookups via Full Name (All Context Persons)
+        # TACTIC 4: GitHub Graph API Lookups via Full Name
         # ------------------------------------------------------------------
-        uncached_names = []
-        name_to_row_keys_map = {}
+        names = [
+            str(p_row["full_name"]).strip()
+            for p_row in person_rows
+            if p_row.get("full_name")
+        ]
+        if names:
+            unique_names = sorted(list(set(names)))
+            name_to_row_keys_map: Dict[str, List[Tuple[int, str]]] = {}
 
-        for p_row in person_rows:
-            p_id = p_row["person_id"]
-            full_name = p_row.get("full_name")
-            if not full_name:
-                continue
+            for p_row in person_rows:
+                p_id = p_row["person_id"]
+                fn = str(p_row.get("full_name", "")).strip()
+                if not fn:
+                    continue
+                target_keys = [k for k in resolved_companies if k[0] == p_id] or [
+                    (p_id, "full_name_lookup")
+                ]
+                name_to_row_keys_map.setdefault(fn, []).extend(target_keys)
 
-            full_name = str(full_name).strip()
-            cache_key = f"gh_company_name:{full_name}"
-
-            target_keys = [k for k in resolved_companies if k[0] == p_id]
-            if not target_keys:
-                target_keys = [(p_id, "full_name_lookup")]
-                resolved_companies[target_keys[0]] = set()
-
-            if cache_key in cache:
-                cached_val = cache[cache_key]
-                if cached_val:
-                    for tk in target_keys:
-                        resolved_companies[tk].add(cached_val)
-            else:
-                uncached_names.append(full_name)
-                if full_name not in name_to_row_keys_map:
-                    name_to_row_keys_map[full_name] = []
-                name_to_row_keys_map[full_name].extend(target_keys)
-
-        if uncached_names:
-            unique_names = list(set(uncached_names))
             for i in tqdm(
                 range(0, len(unique_names), batch_size),
                 desc=f"📝 Fetching Full Name Batches ({ctx.project_name})",
-                unit="batch",
             ):
-                batch = unique_names[i : i + batch_size]
+                batch = tuple(unique_names[i : i + batch_size])
                 api_results = _fetch_companies_by_fullname_batch(batch)
 
                 for name_item, company_found in api_results.items():
                     if company_found and name_item in name_to_row_keys_map:
                         for target_key in name_to_row_keys_map[name_item]:
-                            resolved_companies[target_key].add(company_found)
+                            resolved_companies[target_key].update(company_found)
 
         # ------------------------------------------------------------------
         # PHASE 5: State Pipeline Sync & DataFrame Materialization
@@ -473,9 +458,7 @@ def enrich_project_contexts_with_companies(
         enriched_contexts.append(ctx)
 
         print(
-            f"✅ Completed Project {ctx.project_name}: "
-            f"+{len(existing_orgs) - initial_org_count} companies, "
-            f"+{len(existing_affils_set) - initial_affils_count} affiliations"
+            f"✅ Completed Project {ctx.project_name}: +{len(existing_orgs) - initial_org_count} companies, +{len(existing_affils_set) - initial_affils_count} affiliations"
         )
 
     return enriched_contexts

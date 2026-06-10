@@ -2,7 +2,6 @@
 
 import datetime
 from pathlib import Path
-from src.statistics import generate_table_counts, show_basic_statistics
 
 from dotenv import load_dotenv
 
@@ -10,7 +9,8 @@ from dataloader import load_all_projects
 from enhance_data.add_companies import enrich_project_contexts_with_companies
 from enhance_data.merge_companies import merge_duplicate_companies_in_contexts
 from enhance_data.merge_people import merge_duplicate_people
-from governance import show_governance_statistics
+from governance_plots import show_governance_statistics
+from statistics2 import generate_table_counts, show_basic_statistics
 
 
 def main() -> None:
@@ -19,9 +19,9 @@ def main() -> None:
     load_dotenv()
 
     # Setup core operational path markers
-    data_dir = Path("../data/proposals")
+    data_dir = Path("data/proposals")
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_output_dir = Path("../output")
+    base_output_dir = Path("output")
     output_dir = base_output_dir / timestamp
 
     # Clean output dir of 2 or more runs ago
@@ -43,6 +43,7 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Discover all SQLite databases
+    print(f"Looking for SQLite databases in: {data_dir.resolve()}")
     db_files = []
     for ext in ["*.sqlite3", "*.db", "*.sqlite"]:
         db_files.extend(data_dir.glob(ext))

@@ -101,7 +101,7 @@ def _get_organisations_df(ctx: IndividualProjectContext) -> pl.DataFrame:
 METRIC_REGISTRY = [
     MetricConfig(
         "revisions",
-        "revisions_per_year.png",
+        "revisions_per_year.svg",
         "Revisions",
         "Count",
         "Year",
@@ -111,7 +111,7 @@ METRIC_REGISTRY = [
     ),
     MetricConfig(
         "comments",
-        "comments_per_year.png",
+        "comments_per_year.svg",
         "Comments",
         "Count",
         "Year",
@@ -121,7 +121,7 @@ METRIC_REGISTRY = [
     ),
     MetricConfig(
         "authors",
-        "authors_proposing_per_year.png",
+        "authors_proposing_per_year.svg",
         "Authors",
         "Count",
         "Year",
@@ -131,7 +131,7 @@ METRIC_REGISTRY = [
     ),
     MetricConfig(
         "statuses",
-        "proposal_status_per_year.png",
+        "proposal_status_per_year.svg",
         "Status Timeline",
         "Number of Proposals",
         "Year",
@@ -140,7 +140,7 @@ METRIC_REGISTRY = [
     ),
     MetricConfig(
         "domains",
-        "person_identifiers_domain_counts.png",
+        "person_identifiers_domain_counts.svg",
         "Domains",
         "Count",
         "Domain",
@@ -150,7 +150,7 @@ METRIC_REGISTRY = [
     ),
     MetricConfig(
         "identifiers",
-        "person_identifiers_type_counts.png",
+        "person_identifiers_type_counts.svg",
         "ID Types",
         "Count",
         "Type",
@@ -160,7 +160,7 @@ METRIC_REGISTRY = [
     ),
     MetricConfig(
         "organisations",
-        "organisations_name_counts.png",
+        "organisations_name_counts.svg",
         "Orgs",
         "Count",
         "Organisation",
@@ -246,7 +246,7 @@ def _build_combined_grid(
         weight="bold",
     )
     plt.tight_layout()
-    plt.savefig(str(output_dir / f"combined_{cfg.key}_grid.png"), dpi=150)
+    plt.savefig(str(output_dir / f"combined_{cfg.key}_grid.svg"))
     plt.close()
 
 
@@ -277,7 +277,7 @@ def show_basic_statistics(
                 f"{ctx.project_name}: {cfg.title_suffix}",
             )
             plt.tight_layout()
-            plt.savefig(str(proj_folder / cfg.filename), dpi=150)
+            plt.savefig(str(proj_folder / cfg.filename))
             plt.close()
 
     # Loop 2: Compute and save Combined Square Grid Overviews directly to output root folder
@@ -299,9 +299,11 @@ def generate_table_counts(
         ("Proposal revision authors", "proposal_revision_authors"),
         ("Proposal statuses", "proposal_statuses"),
         ("Comment", "comments"),
+        ("Person", "persons"),
         ("Person identifiers", "person_identifiers"),
         ("Organisations", "organisations"),
         ("Affiliations", "affiliations"),
+        ("Related proposals", "related_proposals"),
     ]
 
     # --- 1. SWAP LAYOUT: Build Transposed Data ---
@@ -350,7 +352,19 @@ def generate_table_counts(
 
     # Populate numerical data rows
     for row in table_data:
-        str_row = [str(item).replace("_", r"\_") for item in row]
+        str_row = []
+        for item in row:
+            # Convert to string and strip spaces
+            item_str = str(item).strip()
+
+            # Check if the item is a valid integer or float (ignoring signs)
+            # This ensures only numbers get wrapped in \num{...}
+            if item_str.replace(".", "", 1).isdigit():
+                str_row.append(f"\\num{{{item_str}}}")
+            else:
+                # If it's a text entry, just handle regular LaTeX escaping
+                str_row.append(item_str.replace("_", r"\_"))
+
         latex_lines.append("    " + " & ".join(str_row) + r" \\")
 
     latex_lines.append(r"    \hline")

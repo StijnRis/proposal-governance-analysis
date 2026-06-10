@@ -363,4 +363,4 @@ def load_all_projects(
             conn.close()
 
     # Final sort across all extracted projects
-    return sorted(all_contexts, key=lambda c: c.project_id)
+    return sorted(all_contexts, key=lambda c: c.project_name.lower())
