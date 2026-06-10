@@ -8,6 +8,7 @@ import pandas as pd
 import polars as pl
 import seaborn as sns
 from matplotlib.ticker import MaxNLocator
+from scipy.cluster.hierarchy import dendrogram, linkage
 
 from dataloader import IndividualProjectContext
 from governance_stats import (
@@ -29,6 +30,7 @@ def plot_consolidated_line_charts(
     projects_stats: List[GovernanceProjectStats],
     output_dir: Path,
     dimensions: List[str],
+    base_font_size: int,
 ) -> None:
     """Plots accurate discrete trends utilizing single-year historical context dictionaries."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -56,16 +58,25 @@ def plot_consolidated_line_charts(
                     )
 
             ax.set_title(
-                f"Trend Analysis: {dim}", fontsize=12, fontweight="bold", pad=15
+                f"Trend Analysis: {dim}",
+                fontsize=base_font_size,
+                fontweight="bold",
+                pad=15,
             )
-            ax.set_xlabel("Year", fontsize=10)
-            ax.set_ylabel("Score Profile Index", fontsize=10)
+            ax.set_xlabel("Year", fontsize=base_font_size - 2)
+            ax.set_ylabel("Score Profile Index", fontsize=base_font_size - 2)
             ax.set_ylim(-0.05, 1.05)
             ax.grid(True, linestyle="--", alpha=0.6)
             ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+            ax.tick_params(axis="both", which="major", labelsize=base_font_size - 3)
 
             if has_data:
-                ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1), frameon=True)
+                ax.legend(
+                    loc="upper left",
+                    bbox_to_anchor=(1.02, 1),
+                    frameon=True,
+                    fontsize=base_font_size - 2,
+                )
 
             plt.tight_layout()
             safe_filename = "".join(c if c.isalnum() else "_" for c in dim).lower()
@@ -78,6 +89,7 @@ def plot_combined_heatmap(
     projects_stats: List[GovernanceProjectStats],
     output_dir: Path,
     dimensions: List[str],
+    base_font_size: int,
 ) -> None:
     """Generates cross-project summary matrix maps utilizing the precise 5-year pooled indices."""
     if not projects_stats or not dimensions:
@@ -100,8 +112,10 @@ def plot_combined_heatmap(
 
         ax.set_xticks(np.arange(len(dimensions)))
         ax.set_yticks(np.arange(len(unique_projects)))
-        ax.set_xticklabels(wrapped_labels, rotation=0, ha="center", fontsize=9)
-        ax.set_yticklabels(unique_projects, fontsize=10)
+        ax.set_xticklabels(
+            wrapped_labels, rotation=0, ha="center", fontsize=base_font_size - 3
+        )
+        ax.set_yticklabels(unique_projects, fontsize=base_font_size - 2)
 
         for i in range(len(unique_projects)):
             for j in range(len(dimensions)):
@@ -114,12 +128,18 @@ def plot_combined_heatmap(
                     va="center",
                     color="black" if val < 0.7 else "white",
                     fontweight="bold",
+                    fontsize=base_font_size - 3,
                 )
 
-        fig.colorbar(im, ax=ax, label="5-Year Pooled Structural Index Performance")
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label(
+            "Index over 5 years", size=base_font_size - 2
+        )
+        cbar.ax.tick_params(labelsize=base_font_size - 3)
+
         ax.set_title(
-            "Grouped Governance Profile Cross-Heatmap Summary (5-Year Pooled)",
-            fontsize=13,
+            "Governance Dimensions Heatmap (5-Year Pooled)",
+            fontsize=base_font_size + 1,
             fontweight="bold",
             pad=20,
         )
@@ -133,6 +153,7 @@ def plot_combined_parallel_coordinates(
     projects_stats: List[GovernanceProjectStats],
     output_dir: Path,
     dimensions: List[str],
+    base_font_size: int,
 ) -> None:
     """Constructs a Parallel Coordinates Plot mapping projects using their true pooled 5-year vectors."""
     if not projects_stats or len(dimensions) < 2:
@@ -162,17 +183,22 @@ def plot_combined_parallel_coordinates(
         ax.set_xticks(x_positions)
         ax.set_xticklabels(
             [textwrap.fill(d, width=12) for d in dimensions],
-            fontsize=9,
+            fontsize=base_font_size - 3,
             fontweight="bold",
         )
+        ax.tick_params(axis="y", labelsize=base_font_size - 3)
         ax.set_ylim(-0.05, 1.05)
         ax.grid(axis="y", linestyle="--", alpha=0.5)
         ax.legend(
-            loc="upper left", bbox_to_anchor=(1.02, 1), title="Evaluated Projects"
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1),
+            title="Evaluated Projects",
+            title_fontsize=base_font_size - 2,
+            fontsize=base_font_size - 3,
         )
         ax.set_title(
-            "Grouped Governance Parallel Coordinates Structural Vector (5-Year Pooled)",
-            fontsize=13,
+            "Governance Dimensions Parallel Coordinates (5-Year Pooled)",
+            fontsize=base_font_size + 1,
             fontweight="bold",
             pad=20,
         )
@@ -189,6 +215,7 @@ def plot_project_radars(
     projects_stats: List[GovernanceProjectStats],
     output_dir: Path,
     dimensions: List[str],
+    base_font_size: int,
 ) -> None:
     """Generates localized spider radar profiles per project parsing accurate block structures."""
     if not dimensions:
@@ -211,7 +238,9 @@ def plot_project_radars(
             ax.set_theta_offset(np.pi / 2)
             ax.set_theta_direction(-1)
             ax.set_xticks(angles)
-            ax.set_xticklabels(labels, color="#2c3e50", size=9, weight="bold")
+            ax.set_xticklabels(
+                labels, color="#2c3e50", size=base_font_size - 3, weight="bold"
+            )
             ax.set_ylim(0, 1.0)
             ax.tick_params(axis="x", pad=22)
 
@@ -219,11 +248,13 @@ def plot_project_radars(
             ax.fill(closed_angles, closed_values, color="#1f77b4", alpha=0.18)
             ax.set_yticks([0.2, 0.4, 0.6, 0.8, 1.0])
             ax.set_yticklabels(
-                ["0.2", "0.4", "0.6", "0.8", "1.0"], color="grey", size=9
+                ["0.2", "0.4", "0.6", "0.8", "1.0"],
+                color="grey",
+                size=base_font_size - 3,
             )
             ax.set_title(
                 f"{p_obj.project_name} - Governance Profile (5-Year Pooled)",
-                fontsize=13,
+                fontsize=base_font_size + 1,
                 fontweight="bold",
                 pad=30,
                 y=1.05,
@@ -243,6 +274,7 @@ def plot_dimensions_correlation(
     projects_stats: List[GovernanceProjectStats],
     output_dir: Path,
     dimensions: List[str],
+    base_font_size: int,
 ) -> None:
     """Extracts pooled metrics matrix, computes safe correlations, and saves outputs."""
     if len(dimensions) < 2 or not projects_stats:
@@ -286,8 +318,10 @@ def plot_dimensions_correlation(
 
         ax.set_xticks(np.arange(len(dimensions)))
         ax.set_yticks(np.arange(len(dimensions)))
-        ax.set_xticklabels(wrapped_labels, rotation=45, ha="right", fontsize=9)
-        ax.set_yticklabels(wrapped_labels, fontsize=9)
+        ax.set_xticklabels(
+            wrapped_labels, rotation=45, ha="right", fontsize=base_font_size - 3
+        )
+        ax.set_yticklabels(wrapped_labels, fontsize=base_font_size - 3)
 
         for i in range(len(dimensions)):
             for j in range(len(dimensions)):
@@ -300,12 +334,16 @@ def plot_dimensions_correlation(
                     va="center",
                     color="black" if abs(val) < 0.5 else "white",
                     fontweight="bold",
+                    fontsize=base_font_size - 3,
                 )
 
-        fig.colorbar(im, ax=ax, label="Pearson Correlation Coefficient")
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label("Pearson Correlation Coefficient", size=base_font_size - 2)
+        cbar.ax.tick_params(labelsize=base_font_size - 3)
+
         ax.set_title(
-            "Governance Framework Dimensions Correlation Matrix",
-            fontsize=13,
+            "Governance Dimensions Correlation Matrix",
+            fontsize=base_font_size + 1,
             fontweight="bold",
             pad=20,
         )
@@ -332,7 +370,9 @@ def plot_dimensions_correlation(
 
 
 def display_validation_results(
-    validation_result: KnownGroupsValidationResult, output_dir: Path
+    validation_result: KnownGroupsValidationResult,
+    output_dir: Path,
+    base_font_size: int,
 ) -> None:
     """
     Consumes a KnownGroupsValidationResult data structure container to print a cleanly formatted
@@ -409,13 +449,16 @@ def display_validation_results(
             jitter=0.1,
         )
 
-        ax.set_title(title_str, fontsize=11, fontweight="bold")
-        ax.set_xlabel("")
-        ax.set_ylabel("Metric Score")
+        ax.set_title(title_str, fontsize=base_font_size - 1, fontweight="bold")
+        ax.set_xlabel("", fontsize=base_font_size - 2)
+        ax.set_ylabel("Metric Score", fontsize=base_font_size - 2)
+        ax.tick_params(axis="y", labelsize=base_font_size - 3)
         ax.grid(axis="y", linestyle="--", alpha=0.4)
 
         # Rotate text labels dynamically to prevent overlapping
-        ax.set_xticklabels(ax.get_xticklabels(), rotation=15, ha="right")
+        ax.set_xticklabels(
+            ax.get_xticklabels(), rotation=15, ha="right", fontsize=base_font_size - 3
+        )
 
     # Prune any unused axes windows from the grid layout
     for remaining_idx in range(num_dims, len(axes)):
@@ -426,13 +469,11 @@ def display_validation_results(
     plt.close()
 
 
-from scipy.cluster.hierarchy import dendrogram, linkage
-
-
 def plot_governance_dendrogram(
     projects_stats: List[GovernanceProjectStats],
     output_dir: Path,
     dimensions: List[str],
+    base_font_size: int,
 ) -> None:
     """
     Applies agglomerative hierarchical clustering on project profiles
@@ -465,16 +506,19 @@ def plot_governance_dendrogram(
             labels=unique_projects,
             orientation="top",
             leaf_rotation=45,
-            leaf_font_size=10,
+            leaf_font_size=base_font_size - 2,
             ax=ax,
         )
         ax.set_title(
             "Hierarchical Structural Taxonomy (Ward's Linkage)",
-            fontsize=13,
+            fontsize=base_font_size + 1,
             fontweight="bold",
             pad=15,
         )
-        ax.set_ylabel("Cophetic Distance threshold Variance Gap", fontsize=10)
+        ax.set_ylabel(
+            "Cophetic Distance", fontsize=base_font_size - 2
+        )
+        ax.tick_params(axis="y", labelsize=base_font_size - 3)
         ax.grid(axis="y", linestyle="--", alpha=0.4)
 
         plt.tight_layout()
@@ -519,7 +563,9 @@ def plot_governance_dendrogram(
 
 
 def show_governance_statistics(
-    projects: List[IndividualProjectContext], output_dir: Path
+    projects: List[IndividualProjectContext],
+    output_dir: Path,
+    base_font_size: int = 19,
 ) -> None:
     """Calculates flat trend lines and robust multi-year pooled profiles over all data assets."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -530,13 +576,19 @@ def show_governance_statistics(
     dimensions = _get_all_dimensions(project_records, ordered_keys)
 
     print("Executing visualization generation tasks over grouped structural records...")
-    plot_consolidated_line_charts(project_records, output_dir, dimensions)
-    plot_combined_heatmap(project_records, output_dir, dimensions)
-    plot_combined_parallel_coordinates(project_records, output_dir, dimensions)
-    plot_project_radars(project_records, output_dir, dimensions)
-    plot_dimensions_correlation(project_records, output_dir, dimensions)
-    display_validation_results(known_groups_result, output_dir)
-    plot_governance_dendrogram(project_records, output_dir, dimensions)
+
+    # Passing the base_font_size down the chain to all visualization functions
+    plot_consolidated_line_charts(
+        project_records, output_dir, dimensions, base_font_size
+    )
+    plot_combined_heatmap(project_records, output_dir, dimensions, base_font_size)
+    plot_combined_parallel_coordinates(
+        project_records, output_dir, dimensions, base_font_size
+    )
+    plot_project_radars(project_records, output_dir, dimensions, base_font_size)
+    plot_dimensions_correlation(project_records, output_dir, dimensions, base_font_size)
+    display_validation_results(known_groups_result, output_dir, base_font_size)
+    plot_governance_dendrogram(project_records, output_dir, dimensions, base_font_size)
 
     # Output Tables Summary Generation
     table_data = {"Governance Domain Framework Structure": dimensions}
