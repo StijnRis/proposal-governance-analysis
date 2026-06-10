@@ -402,113 +402,125 @@ def compute_representation_comment_gini(
         return results
     else:
         raise ValueError(f"Unknown mode: {mode}")
-
-
 def calculate_known_groups_validity(
     project_records: List[GovernanceProjectStats],
     ordered_keys: List[str],
 ) -> KnownGroupsValidationResult:
     """
-    Groups metrics into archetypes and executes statistical validity tests.
-    Returns a structured data container holding zero plotting dependencies.
+    Groups metrics into archetypes using a custom multidimensional classification matrix
+    and executes appropriate non-parametric statistical validity tests (Mann-Whitney U or Kruskal-Wallis).
     """
-    group_mapping = {
-        "JavaScript": "Community",
-        "Kubernetes": "Community",
-        "NumPy": "Community",
-        "Pandas": "Community",
-        "Python": "Community",
-        "Rust": "Community",
-        "Kotlin": "Corporate",
-        "OpenJDK": "Corporate",
-        "Swift": "Corporate",
-        "C++": "Corporate",
+    # Custom multidimensional classification dictionary
+    splits = {
+        'Independence': {
+            'C++': 'Foundation/Committee', 'JavaScript': 'Foundation/Committee', 'Kubernetes': 'Foundation/Committee',
+            'NumPy': 'Foundation/Committee', 'Pandas': 'Foundation/Committee', 'Python': 'Foundation/Committee', 'Rust': 'Foundation/Committee',
+            'Kotlin': 'Vendor-Dominated', 'OpenJDK': 'Vendor-Dominated', 'Swift': 'Vendor-Dominated'
+        },
+        'Pluralism': {
+            'C++': 'Formal Standards Spec', 'JavaScript': 'Formal Standards Spec', 'OpenJDK': 'Formal Standards Spec',
+            'Kotlin': 'Applied Software/Libs', 'Kubernetes': 'Applied Software/Libs', 'NumPy': 'Applied Software/Libs',
+            'Pandas': 'Applied Software/Libs', 'Python': 'Applied Software/Libs', 'Rust': 'Applied Software/Libs', 'Swift': 'Applied Software/Libs'
+        },
+        'Representation': {
+            'C++': 'High-Volume Scale', 'JavaScript': 'High-Volume Scale', 'Kubernetes': 'High-Volume Scale', 'Python': 'High-Volume Scale', 'Rust': 'High-Volume Scale',
+            'Kotlin': 'Focused/Low-Volume', 'NumPy': 'Focused/Low-Volume', 'OpenJDK': 'Focused/Low-Volume', 'Pandas': 'Focused/Low-Volume', 'Swift': 'Focused/Low-Volume'
+        },
+        'Decentralized Decision-Making': {
+            'C++': 'Highly-Decentralized', 'JavaScript': 'Highly-Decentralized',
+            'Kubernetes': 'Moderately-Decentralized', 'NumPy': 'Moderately-Decentralized', 'Pandas': 'Moderately-Decentralized', 'Python': 'Moderately-Decentralized', 'Rust': 'Moderately-Decentralized',
+            'Kotlin': 'Centralized', 'OpenJDK': 'Centralized', 'Swift': 'Centralized'
+        },
+        'Autonomous Participation': {
+            'C++': 'Committee-Oriented', 'JavaScript': 'Committee-Oriented', 'OpenJDK': 'Committee-Oriented', 'Python': 'Committee-Oriented',
+            'Kotlin': 'GitHub-Native', 'Kubernetes': 'GitHub-Native', 'NumPy': 'GitHub-Native', 'Pandas': 'GitHub-Native', 'Rust': 'GitHub-Native', 'Swift': 'GitHub-Native'
+        }
     }
 
-    # Extract active dimensions present across records
     present_dims = {dim for p in project_records for dim in p.metrics}
     dimensions = [dim for dim in ordered_keys if dim in present_dims]
-
-    records_list = []
-    for p_obj in project_records:
-        row = {
-            "Project": p_obj.project_name,
-            "Group": group_mapping.get(p_obj.project_name, "Unknown"),
-        }
-        for dim in dimensions:
-            row[dim] = p_obj.pooled_metrics.get(dim, 0.0)
-        records_list.append(row)
-
-    df_all = pl.DataFrame(records_list)
-    df_test = df_all.filter(pl.col("Group").is_in(["Community", "Corporate"]))
 
     validity_rows = []
     group_data = {}
 
     for dim in dimensions:
-        comm_vals = (
-            df_test.filter(pl.col("Group") == "Community")
-            .select(dim)
-            .to_series()
-            .to_numpy()
-        )
-        corp_vals = (
-            df_test.filter(pl.col("Group") == "Corporate")
-            .select(dim)
-            .to_series()
-            .to_numpy()
-        )
+        dim_splits = splits.get(dim, {})
+        
+        # Sort and gather scalar items into respective group arrays
+        raw_groups = {}
+        for p_obj in project_records:
+            proj_name = p_obj.project_name
+            g_name = dim_splits.get(proj_name)
+            if g_name and dim in p_obj.pooled_metrics:
+                val = p_obj.pooled_metrics[dim]
+                if g_name not in raw_groups:
+                    raw_groups[g_name] = []
+                raw_groups[g_name].append(val)
+                
+        # Consolidate into arrays
+        sorted_g_names = sorted(list(raw_groups.keys()))
+        dim_group_arrays = {g: np.array(raw_groups[g]) for g in sorted_g_names}
+        group_data[dim] = dim_group_arrays
 
-        # Store arrays for downstream plotting
-        group_data[dim] = {"Community": comm_vals, "Corporate": corp_vals}
-
-        mean_comm, mean_corp = np.mean(comm_vals), np.mean(corp_vals)
-        median_comm, median_corp = np.median(comm_vals), np.median(corp_vals)
-
-        # Better small-sample Mann-Whitney calculation
-        if len(comm_vals) > 0 and len(corp_vals) > 0:
-            u_stat, p_val = stats.mannwhitneyu(
-                comm_vals, corp_vals, alternative="two-sided", method="exact"
-            )
-
-            std_comm, std_corp = np.std(comm_vals, ddof=1), np.std(corp_vals, ddof=1)
-            denom = len(comm_vals) + len(corp_vals) - 2
-            pooled_std = (
-                np.sqrt(
-                    (
-                        ((len(comm_vals) - 1) * std_comm**2)
-                        + ((len(corp_vals) - 1) * std_corp**2)
-                    )
-                    / denom
-                )
-                if denom > 0
-                else 0.0
-            )
-            cohen_d = (mean_comm - mean_corp) / pooled_std if pooled_std != 0 else 0.0
+        # Evaluate group depth to run the correct statistical engine
+        if len(sorted_g_names) == 2:
+            g1_name, g2_name = sorted_g_names[0], sorted_g_names[1]
+            arr1, arr2 = dim_group_arrays[g1_name], dim_group_arrays[g2_name]
+            
+            test_name = "Mann-Whitney U"
+            u_stat, p_val = stats.mannwhitneyu(arr1, arr2, alternative="two-sided")
+            stat_val = u_stat
+            
+            # Calculate standard Cohen's d Effect Size
+            mean1, mean2 = np.mean(arr1), np.mean(arr2)
+            std1, std2 = np.std(arr1, ddof=1), np.std(arr2, ddof=1)
+            n1, n2 = len(arr1), len(arr2)
+            denom = n1 + n2 - 2
+            pooled_std = np.sqrt((((n1 - 1) * std1**2) + ((n2 - 1) * std2**2)) / denom) if denom > 0 else 1.0
+            effect_size = (mean1 - mean2) / pooled_std if pooled_std != 0 else 0.0
+            effect_metric = "Cohen's d"
+            
+        elif len(sorted_g_names) > 2:
+            test_name = "Kruskal-Wallis"
+            arrays_list = [dim_group_arrays[g] for g in sorted_g_names]
+            h_stat, p_val = stats.kruskal(*arrays_list)
+            stat_val = h_stat
+            
+            # Calculate non-parametric Eta-squared (η²) for multi-group scenarios
+            k = len(sorted_g_names)
+            n_total = sum(len(arr) for arr in arrays_list)
+            effect_size = (h_stat - k + 1) / (n_total - k) if (n_total - k) > 0 else 0.0
+            effect_metric = "Eta-squared (η²)"
         else:
-            p_val = 1.0
-            cohen_d = 0.0
+            test_name, stat_val, p_val, effect_metric, effect_size = "None", 0.0, 1.0, "N/A", 0.0
 
-        # Tiered verification threshold for Small-N constraints
+        # Build descriptive context string mapping group averages
+        details_list = []
+        for g in sorted_g_names:
+            arr = dim_group_arrays[g]
+            details_list.append(f"{g}: μ={np.mean(arr):.3f}, med={np.median(arr):.3f}")
+        group_summary = "; ".join(details_list)
+
+        # Apply tiered evaluation filters adjusted for small N samples
         if p_val < 0.05:
             is_valid = "Yes (p < 0.05)"
-        elif abs(cohen_d) >= 0.8:
-            is_valid = f"Practical (d = {round(cohen_d, 2)})"
+        elif effect_metric == "Cohen's d" and abs(effect_size) >= 0.8:
+            is_valid = f"Practical (d = {round(effect_size, 2)})"
+        elif effect_metric == "Eta-squared (η²)" and effect_size >= 0.14:
+            is_valid = f"Practical (η² = {round(effect_size, 2)})"
         else:
             is_valid = "No"
 
-        validity_rows.append(
-            {
-                "Governance Dimension": dim,
-                "Corporate Mean": round(mean_corp, 4),
-                "Corporate Median": round(median_corp, 4),
-                "Community Mean": round(mean_comm, 4),
-                "Community Median": round(median_comm, 4),
-                "p-value": round(p_val, 4),
-                "Cohen's d": round(cohen_d, 4),
-                "Discriminant Validity Status": is_valid,
-            }
-        )
+        validity_rows.append({
+            "Governance Dimension": dim,
+            "Statistical Test": test_name,
+            "Test Statistic": round(stat_val, 4),
+            "p-value": round(p_val, 4),
+            "Effect Metric": effect_metric,
+            "Effect Size": round(effect_size, 4),
+            "Group Summaries": group_summary,
+            "Discriminant Validity Status": is_valid
+        })
 
     return KnownGroupsValidationResult(
         ordered_keys=ordered_keys,

@@ -285,7 +285,6 @@ def show_basic_statistics(
     for cfg in METRIC_REGISTRY:
         _build_combined_grid(projects, cfg, output_dir)
 
-
 def generate_table_counts(
     projects: list[IndividualProjectContext], output_path: Path
 ) -> None:
@@ -295,10 +294,10 @@ def generate_table_counts(
 
     table_fields = [
         ("Proposal", "proposals"),
-        ("Proposal revisions", "proposal_revisions"),
-        ("Proposal revision authors", "proposal_revision_authors"),
-        ("Proposal statuses", "proposal_statuses"),
-        ("Comment", "comments"),
+        ("Revisions", "proposal_revisions"),
+        ("Authors", "proposal_revision_authors"),
+        ("Statuses", "proposal_statuses"),
+        ("Comments", "comments"),
         ("Person", "persons"),
         ("Person identifiers", "person_identifiers"),
         ("Organisations", "organisations"),
@@ -325,7 +324,9 @@ def generate_table_counts(
     output_path.mkdir(parents=True, exist_ok=True)
 
     # --- 3. Generate and save Markdown Table ---
-    markdown_table = tabulate(table_data, headers=md_headers, tablefmt="github")
+    # Added colalign parameter: left-aligns the project name, right-aligns the numerical columns
+    col_alignments = ["left"] + ["right"] * len(table_fields)
+    markdown_table = tabulate(table_data, headers=md_headers, tablefmt="github", colalign=col_alignments)
     markdown_output = f"# Table Item Counts by Project\n\n{markdown_table}\n"
 
     with open(output_path / "table_counts.md", "w") as f:
@@ -339,8 +340,8 @@ def generate_table_counts(
         r"    \centering",
         r"    \caption{Overview of dataset counts across different programming languages and technologies.}",
         r"    \label{tab:dataset_counts}",
-        # Define a custom centered wrapping column layout using tabularx
-        r"    \newcolumntype{Y}{>{\centering\arraybackslash}X}",
+        # Changed column definition 'Y' from \centering to \raggedleft for right-alignment
+        r"    \newcolumntype{Y}{>{\raggedleft\arraybackslash}X}",
         f"    \\begin{{tabularx}}{{\\textwidth}}{{l*{{{num_data_cols}}}{{Y}}}}",
         r"    \hline",
     ]

@@ -4,11 +4,13 @@ from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
+import seaborn as sns
 from matplotlib.ticker import MaxNLocator
 
 from dataloader import IndividualProjectContext
-from governance import (
+from governance_stats import (
     GovernanceProjectStats,
     KnownGroupsValidationResult,
     get_governance_statistics,
@@ -329,80 +331,15 @@ def plot_dimensions_correlation(
     markdown_path.write_text("\n".join(md_lines), encoding="utf-8")
 
 
-def plot_known_groups_validity(
-    analysis_result: KnownGroupsValidationResult,
-    output_dir: Path,
+def display_validation_results(
+    validation_result: KnownGroupsValidationResult, output_dir: Path
 ) -> None:
-    """Consumes calculation containers to render grid structural validations cleanly."""
-    dimensions = analysis_result.dimensions
-    if not dimensions:
-        print("No valid dimensions found for rendering visualizations.")
-        return
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-    axes = axes.flatten()
-
-    try:
-        for idx, dim in enumerate(dimensions):
-            ax = axes[idx]
-            comm_vals = analysis_result.group_data[dim]["Community"]
-            corp_vals = analysis_result.group_data[dim]["Corporate"]
-            box_data = [comm_vals, corp_vals]
-
-            bp = ax.boxplot(
-                box_data,
-                patch_artist=True,
-                labels=[
-                    f"Community\n(N={len(comm_vals)})",
-                    f"Corporate\n(N={len(corp_vals)})",
-                ],
-                widths=0.4,
-            )
-
-            colors = ["#4db6ac", "#ff8a80"]
-            for patch, color in zip(bp["boxes"], colors):
-                patch.set_facecolor(color)
-                patch.set_alpha(0.7)
-            for median in bp["medians"]:
-                median.set(color="#37474f", linewidth=2)
-
-            for g_idx, vals in enumerate(box_data, start=1):
-                x_jitter = np.random.normal(g_idx, 0.04, size=len(vals))
-                ax.scatter(
-                    x_jitter,
-                    vals,
-                    color="#212121",
-                    alpha=0.8,
-                    edgecolor="white",
-                    zorder=3,
-                    s=40,
-                )
-
-            ax.set_title(
-                textwrap.fill(dim, width=25), fontsize=11, fontweight="bold", pad=10
-            )
-            ax.set_ylim(-0.05, 1.05)
-            ax.grid(True, axis="y", linestyle="--", alpha=0.5)
-
-        if len(dimensions) < len(axes):
-            for empty_idx in range(len(dimensions), len(axes)):
-                fig.delaxes(axes[empty_idx])
-
-        fig.suptitle(
-            "Known-Groups Framework Metric Box Plots (Community vs. Corporate)",
-            fontsize=14,
-            fontweight="bold",
-            y=0.98,
-        )
-        plt.tight_layout()
-        plt.savefig(
-            output_dir / "known_groups_discriminant_validity.svg", bbox_inches="tight"
-        )
-    finally:
-        plt.close(fig)
-
-    validity_df = pl.DataFrame(analysis_result.validity_rows)
+    """
+    Consumes a KnownGroupsValidationResult data structure container to print a cleanly formatted
+    markdown summary report table and generate publication-quality evaluation boxplots.
+    """
+    # 1. Parse and print the markdown metrics report table
+    df_table = pl.DataFrame(validation_result.validity_rows)
     with pl.Config(
         tbl_formatting="markdown",
         tbl_hide_dataframe_shape=True,
@@ -411,9 +348,174 @@ def plot_known_groups_validity(
         tbl_rows=-1,
         tbl_cols=-1,
     ):
-        (output_dir / "known_groups_validity_report.md").write_text(
-            str(validity_df), encoding="utf-8"
+        (output_dir / "governance_validation.md").write_text(
+            str(df_table), encoding="utf-8"
         )
+
+    # 2. Configure and draw boxplot grid layouts based on identified dimensions
+    num_dims = len(validation_result.dimensions)
+    if num_dims == 0:
+        print("No metrics available to plot.")
+        return
+
+    cols = min(3, num_dims)
+    rows = (num_dims + cols - 1) // cols
+
+    fig, axes = plt.subplots(rows, cols, figsize=(6 * cols, 5.5 * rows))
+    if num_dims == 1:
+        axes = [axes]
+    else:
+        axes = axes.flatten()
+
+    for idx, dim in enumerate(validation_result.dimensions):
+        ax = axes[idx]
+        dim_data = validation_result.group_data[dim]
+
+        # Build flat visualization DataFrame tracking custom category groups
+        plot_records = []
+        for group_name, array_vals in dim_data.items():
+            for val in array_vals:
+                plot_records.append({"Group": group_name, "Value": val})
+        df_plot = pd.DataFrame(plot_records)
+
+        # Extract row metadata values to build informative headers
+        row_meta = next(
+            r
+            for r in validation_result.validity_rows
+            if r["Governance Dimension"] == dim
+        )
+        title_str = (
+            f"{dim}\n{row_meta['Statistical Test']} (p={row_meta['p-value']:.3f})"
+        )
+
+        # Draw boxplots and overlaid individual data points
+        sns.boxplot(
+            x="Group",
+            y="Value",
+            data=df_plot,
+            ax=ax,
+            palette="Pastel1",
+            width=0.4,
+            fliersize=0,
+        )
+        sns.stripplot(
+            x="Group",
+            y="Value",
+            data=df_plot,
+            ax=ax,
+            color="black",
+            alpha=0.6,
+            size=6,
+            jitter=0.1,
+        )
+
+        ax.set_title(title_str, fontsize=11, fontweight="bold")
+        ax.set_xlabel("")
+        ax.set_ylabel("Metric Score")
+        ax.grid(axis="y", linestyle="--", alpha=0.4)
+
+        # Rotate text labels dynamically to prevent overlapping
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=15, ha="right")
+
+    # Prune any unused axes windows from the grid layout
+    for remaining_idx in range(num_dims, len(axes)):
+        fig.delaxes(axes[remaining_idx])
+
+    plt.tight_layout()
+    plt.savefig(output_dir / "governance_groups_validation.svg", bbox_inches="tight")
+    plt.close()
+
+
+from scipy.cluster.hierarchy import dendrogram, linkage
+
+
+def plot_governance_dendrogram(
+    projects_stats: List[GovernanceProjectStats],
+    output_dir: Path,
+    dimensions: List[str],
+) -> None:
+    """
+    Applies agglomerative hierarchical clustering on project profiles
+    utilizing their true 5-year pooled vectors, rendering a dendrogram map
+    and generating an audit markdown detailing the linkage history.
+    """
+    if not projects_stats or not dimensions:
+        return
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    unique_projects = sorted([p.project_name for p in projects_stats])
+
+    # 1. Structure the project-by-dimension vector space matrix
+    matrix_data = np.zeros((len(unique_projects), len(dimensions)))
+    project_map = {p.project_name: p for p in projects_stats}
+
+    for d_idx, dim in enumerate(dimensions):
+        for p_idx, p_name in enumerate(unique_projects):
+            matrix_data[p_idx, d_idx] = project_map[p_name].pooled_metrics.get(dim, 0.0)
+
+    # 2. Compute Agglomerative Linkage using Ward's minimum variance algorithm
+    # rows: samples (projects), columns: features (dimensions)
+    Z = linkage(matrix_data, method="ward")
+
+    # 3. Build and save the publication-quality Dendrogram Vector Image
+    fig, ax = plt.subplots(figsize=(10, 6))
+    try:
+        dendrogram(
+            Z,
+            labels=unique_projects,
+            orientation="top",
+            leaf_rotation=45,
+            leaf_font_size=10,
+            ax=ax,
+        )
+        ax.set_title(
+            "Hierarchical Structural Taxonomy (Ward's Linkage)",
+            fontsize=13,
+            fontweight="bold",
+            pad=15,
+        )
+        ax.set_ylabel("Cophetic Distance threshold Variance Gap", fontsize=10)
+        ax.grid(axis="y", linestyle="--", alpha=0.4)
+
+        plt.tight_layout()
+        plt.savefig(
+            output_dir / "governance_hierarchy_dendrogram.svg", bbox_inches="tight"
+        )
+    finally:
+        plt.close(fig)
+
+    # 4. Generate the step-by-step Taxonomy Aggregation Tree Markdown Report
+    markdown_path = output_dir / "governance_hierarchy_taxonomy.md"
+
+    md_lines = [
+        "# Hierarchical Agglomerative Clustering Audit Trail",
+        "\nThis report logs the variance minimization distance progression during bottom-up tree structural building calculations.\n",
+        "| Step | Target Cluster A | Target Cluster B | Linkage Distance Threshold | Formed Leaf/Node Cluster Size |",
+        "| :---: | :--- | :--- | :---: | :---: |",
+    ]
+
+    current_node_names = list(unique_projects)
+    num_leaves = len(unique_projects)
+
+    for i, row in enumerate(Z):
+        idx_a, idx_b, distance, cluster_size = (
+            int(row[0]),
+            int(row[1]),
+            row[2],
+            int(row[3]),
+        )
+
+        name_a = current_node_names[idx_a]
+        name_b = current_node_names[idx_b]
+
+        new_node_name = f"Node_Cluster_{num_leaves + i} ({name_a} + {name_b})"
+        current_node_names.append(new_node_name)
+
+        md_lines.append(
+            f"| {i + 1} | {name_a} | {name_b} | {distance:.4f} | {cluster_size} |"
+        )
+
+    markdown_path.write_text("\n".join(md_lines), encoding="utf-8")
 
 
 def show_governance_statistics(
@@ -433,7 +535,8 @@ def show_governance_statistics(
     plot_combined_parallel_coordinates(project_records, output_dir, dimensions)
     plot_project_radars(project_records, output_dir, dimensions)
     plot_dimensions_correlation(project_records, output_dir, dimensions)
-    plot_known_groups_validity(known_groups_result, output_dir)
+    display_validation_results(known_groups_result, output_dir)
+    plot_governance_dendrogram(project_records, output_dir, dimensions)
 
     # Output Tables Summary Generation
     table_data = {"Governance Domain Framework Structure": dimensions}
