@@ -297,10 +297,12 @@ def compute_centralization_metrics(
 def compute_newcomers_onboarding(
     ctx: IndividualProjectContext, window_size: int, mode: str
 ) -> Union[float, Dict[int, float]]:
-    """Computes Autonomous Participation Score as the proportion of first-time
-
-    contributors among all active contributors within configurable windows.
     """
+    Computes Autonomous Participation Score using Proposal-Weighted Fractional Authorship.
+    Measures the aggregated share of co-authored and single-authored proposal work
+    driven by first-time authors within configurable time windows.
+    """
+    # 1. Establish baseline for globally baseline onboarding (Historical global first entry)
     author_first_activity = (
         ctx.proposal_revision_authors.join(
             ctx.proposal_revisions, on=["proposal_id", "revision_index"], how="inner"
@@ -309,53 +311,77 @@ def compute_newcomers_onboarding(
         .agg(first_activity_year=pl.col("created_at").dt.year().min())
     )
 
-    all_activity = (
+    # 2. Extract specific proposal details mapped down to chronological tracking levels
+    proposal_base = (
         ctx.proposal_revision_authors.join(
             ctx.proposal_revisions, on=["proposal_id", "revision_index"], how="inner"
         )
         .with_columns(year=pl.col("created_at").dt.year())
-        .select(["year", "author_id"])
-        .unique()
+        .select(["year", "proposal_id", "author_id"])
+        .unique()  # Filter down to (year, proposal, author) combinations
     )
 
-    if all_activity.is_empty():
+    if proposal_base.is_empty():
         return 0.0 if mode == "most_recent" else {}
 
     def _calculate_core_onboarding(sliced_df: pl.DataFrame) -> float:
         if sliced_df.is_empty():
             return 0.0
-        total_active_authors = sliced_df.select("author_id").n_unique()
-        if total_active_authors == 0:
-            return 0.0
 
-        joined = sliced_df.join(author_first_activity, on="author_id", how="inner")
+        # Discover window constraints dynamically
         window_min_year = sliced_df.select(pl.col("year").min()).item()
         window_max_year = sliced_df.select(pl.col("year").max()).item()
 
-        new_authors = (
-            joined.filter(
+        # Connect entry histories to separate newcomer statuses from veterans
+        joined = sliced_df.join(author_first_activity, on="author_id", how="inner")
+
+        # Flag an author as a newcomer if their absolute global first arrival is within this window
+        processed = joined.with_columns(
+            pl.when(
                 pl.col("first_activity_year").is_between(
                     window_min_year, window_max_year
                 )
             )
-            .select("author_id")
-            .n_unique()
+            .then(1.0)
+            .otherwise(0.0)
+            .alias("is_newcomer")
         )
-        return float(new_authors / total_active_authors)
 
-    max_year = all_activity.select(pl.col("year").max()).item()
+        # 3. Fractional Split Construction: Evaluate proportional ownership per unique proposal
+        # Calculate total co-authors (denominator) and newcomer counts (numerator) per proposal
+        proposal_shares = (
+            processed.group_by("proposal_id")
+            .agg(total_authors=pl.len(), newcomer_authors=pl.col("is_newcomer").sum())
+            .with_columns(
+                fractional_newcomer_share=pl.col("newcomer_authors")
+                / pl.col("total_authors")
+            )
+        )
+
+        total_proposals = proposal_shares.height
+        if total_proposals == 0:
+            return 0.0
+
+        # Mean fractional ownership across all explicit system proposals
+        return float(
+            proposal_shares["fractional_newcomer_share"].sum() / total_proposals
+        )
+
+    max_year = proposal_base.select(pl.col("year").max()).item()
 
     if mode == "most_recent":
         start_year = max_year - window_size + 1
-        pooled_df = all_activity.filter(pl.col("year").is_between(start_year, max_year))
+        pooled_df = proposal_base.filter(
+            pl.col("year").is_between(start_year, max_year)
+        )
         return _calculate_core_onboarding(pooled_df)
 
     elif mode == "all_windows":
-        min_year = all_activity.select(pl.col("year").min()).item()
+        min_year = proposal_base.select(pl.col("year").min()).item()
         results = {}
         for end_year in range(min_year, max_year + 1):
             start_year = end_year - window_size + 1
-            window_df = all_activity.filter(
+            window_df = proposal_base.filter(
                 pl.col("year").is_between(start_year, end_year)
             )
             results[end_year] = _calculate_core_onboarding(window_df)
@@ -402,6 +428,8 @@ def compute_representation_comment_gini(
         return results
     else:
         raise ValueError(f"Unknown mode: {mode}")
+
+
 def calculate_known_groups_validity(
     project_records: List[GovernanceProjectStats],
     ordered_keys: List[str],
@@ -412,29 +440,66 @@ def calculate_known_groups_validity(
     """
     # Custom multidimensional classification dictionary
     splits = {
-        'Independence': {
-            'C++': 'Foundation/Committee', 'JavaScript': 'Foundation/Committee', 'Kubernetes': 'Foundation/Committee',
-            'NumPy': 'Foundation/Committee', 'Pandas': 'Foundation/Committee', 'Python': 'Foundation/Committee', 'Rust': 'Foundation/Committee',
-            'Kotlin': 'Vendor-Dominated', 'OpenJDK': 'Vendor-Dominated', 'Swift': 'Vendor-Dominated'
+        "Independence": {
+            "C++": "Foundation/Committee",
+            "JavaScript": "Foundation/Committee",
+            "Kubernetes": "Foundation/Committee",
+            "NumPy": "Foundation/Committee",
+            "Pandas": "Foundation/Committee",
+            "Python": "Foundation/Committee",
+            "Rust": "Foundation/Committee",
+            "Kotlin": "Vendor-Dominated",
+            "OpenJDK": "Vendor-Dominated",
+            "Swift": "Vendor-Dominated",
         },
-        'Pluralism': {
-            'C++': 'Formal Standards Spec', 'JavaScript': 'Formal Standards Spec', 'OpenJDK': 'Formal Standards Spec',
-            'Kotlin': 'Applied Software/Libs', 'Kubernetes': 'Applied Software/Libs', 'NumPy': 'Applied Software/Libs',
-            'Pandas': 'Applied Software/Libs', 'Python': 'Applied Software/Libs', 'Rust': 'Applied Software/Libs', 'Swift': 'Applied Software/Libs'
+        "Pluralism": {
+            "C++": "Formal Standards Spec",
+            "JavaScript": "Formal Standards Spec",
+            "OpenJDK": "Formal Standards Spec",
+            "Kotlin": "Applied Software/Libs",
+            "Kubernetes": "Applied Software/Libs",
+            "NumPy": "Applied Software/Libs",
+            "Pandas": "Applied Software/Libs",
+            "Python": "Applied Software/Libs",
+            "Rust": "Applied Software/Libs",
+            "Swift": "Applied Software/Libs",
         },
-        'Representation': {
-            'C++': 'High-Volume Scale', 'JavaScript': 'High-Volume Scale', 'Kubernetes': 'High-Volume Scale', 'Python': 'High-Volume Scale', 'Rust': 'High-Volume Scale',
-            'Kotlin': 'Focused/Low-Volume', 'NumPy': 'Focused/Low-Volume', 'OpenJDK': 'Focused/Low-Volume', 'Pandas': 'Focused/Low-Volume', 'Swift': 'Focused/Low-Volume'
+        "Representation": {
+            "C++": "High-Volume Scale",
+            "JavaScript": "High-Volume Scale",
+            "Kubernetes": "High-Volume Scale",
+            "Python": "High-Volume Scale",
+            "Rust": "High-Volume Scale",
+            "Kotlin": "Focused/Low-Volume",
+            "NumPy": "Focused/Low-Volume",
+            "OpenJDK": "Focused/Low-Volume",
+            "Pandas": "Focused/Low-Volume",
+            "Swift": "Focused/Low-Volume",
         },
-        'Decentralized Decision-Making': {
-            'C++': 'Highly-Decentralized', 'JavaScript': 'Highly-Decentralized',
-            'Kubernetes': 'Moderately-Decentralized', 'NumPy': 'Moderately-Decentralized', 'Pandas': 'Moderately-Decentralized', 'Python': 'Moderately-Decentralized', 'Rust': 'Moderately-Decentralized',
-            'Kotlin': 'Centralized', 'OpenJDK': 'Centralized', 'Swift': 'Centralized'
+        "Decentralized Decision-Making": {
+            "C++": "Highly-Decentralized",
+            "JavaScript": "Highly-Decentralized",
+            "Kubernetes": "Moderately-Decentralized",
+            "NumPy": "Moderately-Decentralized",
+            "Pandas": "Moderately-Decentralized",
+            "Python": "Moderately-Decentralized",
+            "Rust": "Moderately-Decentralized",
+            "Kotlin": "Centralized",
+            "OpenJDK": "Centralized",
+            "Swift": "Centralized",
         },
-        'Autonomous Participation': {
-            'C++': 'Committee-Oriented', 'JavaScript': 'Committee-Oriented', 'OpenJDK': 'Committee-Oriented', 'Python': 'Committee-Oriented',
-            'Kotlin': 'GitHub-Native', 'Kubernetes': 'GitHub-Native', 'NumPy': 'GitHub-Native', 'Pandas': 'GitHub-Native', 'Rust': 'GitHub-Native', 'Swift': 'GitHub-Native'
-        }
+        "Autonomous Participation": {
+            "C++": "Committee-Oriented",
+            "JavaScript": "Committee-Oriented",
+            "OpenJDK": "Committee-Oriented",
+            "Python": "Committee-Oriented",
+            "Kotlin": "GitHub-Native",
+            "Kubernetes": "GitHub-Native",
+            "NumPy": "GitHub-Native",
+            "Pandas": "GitHub-Native",
+            "Rust": "GitHub-Native",
+            "Swift": "GitHub-Native",
+        },
     }
 
     present_dims = {dim for p in project_records for dim in p.metrics}
@@ -445,7 +510,7 @@ def calculate_known_groups_validity(
 
     for dim in dimensions:
         dim_splits = splits.get(dim, {})
-        
+
         # Sort and gather scalar items into respective group arrays
         raw_groups = {}
         for p_obj in project_records:
@@ -456,7 +521,7 @@ def calculate_known_groups_validity(
                 if g_name not in raw_groups:
                     raw_groups[g_name] = []
                 raw_groups[g_name].append(val)
-                
+
         # Consolidate into arrays
         sorted_g_names = sorted(list(raw_groups.keys()))
         dim_group_arrays = {g: np.array(raw_groups[g]) for g in sorted_g_names}
@@ -466,33 +531,43 @@ def calculate_known_groups_validity(
         if len(sorted_g_names) == 2:
             g1_name, g2_name = sorted_g_names[0], sorted_g_names[1]
             arr1, arr2 = dim_group_arrays[g1_name], dim_group_arrays[g2_name]
-            
+
             test_name = "Mann-Whitney U"
             u_stat, p_val = stats.mannwhitneyu(arr1, arr2, alternative="two-sided")
             stat_val = u_stat
-            
+
             # Calculate standard Cohen's d Effect Size
             mean1, mean2 = np.mean(arr1), np.mean(arr2)
             std1, std2 = np.std(arr1, ddof=1), np.std(arr2, ddof=1)
             n1, n2 = len(arr1), len(arr2)
             denom = n1 + n2 - 2
-            pooled_std = np.sqrt((((n1 - 1) * std1**2) + ((n2 - 1) * std2**2)) / denom) if denom > 0 else 1.0
+            pooled_std = (
+                np.sqrt((((n1 - 1) * std1**2) + ((n2 - 1) * std2**2)) / denom)
+                if denom > 0
+                else 1.0
+            )
             effect_size = (mean1 - mean2) / pooled_std if pooled_std != 0 else 0.0
             effect_metric = "Cohen's d"
-            
+
         elif len(sorted_g_names) > 2:
             test_name = "Kruskal-Wallis"
             arrays_list = [dim_group_arrays[g] for g in sorted_g_names]
             h_stat, p_val = stats.kruskal(*arrays_list)
             stat_val = h_stat
-            
+
             # Calculate non-parametric Eta-squared (η²) for multi-group scenarios
             k = len(sorted_g_names)
             n_total = sum(len(arr) for arr in arrays_list)
             effect_size = (h_stat - k + 1) / (n_total - k) if (n_total - k) > 0 else 0.0
             effect_metric = "Eta-squared (η²)"
         else:
-            test_name, stat_val, p_val, effect_metric, effect_size = "None", 0.0, 1.0, "N/A", 0.0
+            test_name, stat_val, p_val, effect_metric, effect_size = (
+                "None",
+                0.0,
+                1.0,
+                "N/A",
+                0.0,
+            )
 
         # Build descriptive context string mapping group averages
         details_list = []
@@ -511,16 +586,18 @@ def calculate_known_groups_validity(
         else:
             is_valid = "No"
 
-        validity_rows.append({
-            "Governance Dimension": dim,
-            "Statistical Test": test_name,
-            "Test Statistic": round(stat_val, 4),
-            "p-value": round(p_val, 4),
-            "Effect Metric": effect_metric,
-            "Effect Size": round(effect_size, 4),
-            "Group Summaries": group_summary,
-            "Discriminant Validity Status": is_valid
-        })
+        validity_rows.append(
+            {
+                "Governance Dimension": dim,
+                "Statistical Test": test_name,
+                "Test Statistic": round(stat_val, 4),
+                "p-value": round(p_val, 4),
+                "Effect Metric": effect_metric,
+                "Effect Size": round(effect_size, 4),
+                "Group Summaries": group_summary,
+                "Discriminant Validity Status": is_valid,
+            }
+        )
 
     return KnownGroupsValidationResult(
         ordered_keys=ordered_keys,

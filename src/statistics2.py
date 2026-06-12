@@ -21,6 +21,7 @@ class MetricConfig:
     xlabel: str
     transform_fn: Callable[[IndividualProjectContext], pl.DataFrame]
     is_status_plot: bool = False
+    status_col: Optional[str] = None  # Added to dynamically identify the status column
     x_col: Optional[str] = None
     y_col: Optional[str] = None
 
@@ -68,6 +69,16 @@ def _get_statuses_df(ctx: IndividualProjectContext) -> pl.DataFrame:
         .group_by(["year", "normalised_status"])
         .agg(pl.col("proposal_id").count().alias("status_count"))
         .sort(["year", "normalised_status"])
+    )
+
+
+def _get_raw_statuses_df(ctx: IndividualProjectContext) -> pl.DataFrame:
+    """Groups and counts metrics by year and raw_status."""
+    return (
+        ctx.proposal_statuses.with_columns(year=pl.col("created_at").dt.year())
+        .group_by(["year", "raw_status"])
+        .agg(pl.col("proposal_id").count().alias("status_count"))
+        .sort(["year", "raw_status"])
     )
 
 
@@ -132,11 +143,22 @@ METRIC_REGISTRY = [
     MetricConfig(
         "statuses",
         "proposal_status_per_year.svg",
-        "Status Timeline",
+        "Status Timeline (Normalized)",
         "Number of Proposals",
         "Year",
         _get_statuses_df,
         is_status_plot=True,
+        status_col="normalised_status",
+    ),
+    MetricConfig(
+        "raw_statuses",
+        "proposal_raw_status_per_year.svg",
+        "Status Timeline (Raw)",
+        "Number of Proposals",
+        "Year",
+        _get_raw_statuses_df,
+        is_status_plot=True,
+        status_col="raw_status",
     ),
     MetricConfig(
         "domains",
@@ -178,7 +200,7 @@ METRIC_REGISTRY = [
 def _render_axis(ax: plt.Axes, df: pl.DataFrame, cfg: MetricConfig, title: str) -> None:
     """Determines chart styling and dynamically renders the data onto an explicit plot axis."""
     if df.is_empty() or (
-        cfg.is_status_plot and df.drop_nulls(["year", "normalised_status"]).is_empty()
+        cfg.is_status_plot and df.drop_nulls(["year", cfg.status_col]).is_empty()
     ):
         ax.text(
             0.5,
@@ -192,11 +214,10 @@ def _render_axis(ax: plt.Axes, df: pl.DataFrame, cfg: MetricConfig, title: str) 
             color="darkred",
         )
     elif cfg.is_status_plot:
-        clean_df = df.drop_nulls(["year", "normalised_status"])
-        for status_val in clean_df.select("normalised_status").unique().to_series():
-            data = clean_df.filter(pl.col("normalised_status") == status_val).sort(
-                "year"
-            )
+        # Dynamically uses cfg.status_col instead of hardcoded 'normalised_status'
+        clean_df = df.drop_nulls(["year", cfg.status_col])
+        for status_val in clean_df.select(cfg.status_col).unique().to_series():
+            data = clean_df.filter(pl.col(cfg.status_col) == status_val).sort("year")
             ax.plot(
                 data.select("year").to_series().to_list(),
                 data.select("status_count").to_series().to_list(),
@@ -241,7 +262,7 @@ def _build_combined_grid(
         flat_axes[empty_idx].set_axis_off()
 
     plt.suptitle(
-        f"Combined Grid: {cfg.key.title()} Analysis Across All Projects",
+        f"Combined Grid: {cfg.key.replace('_', ' ').title()} Analysis Across All Projects",
         fontsize=16,
         weight="bold",
     )
@@ -285,6 +306,7 @@ def show_basic_statistics(
     for cfg in METRIC_REGISTRY:
         _build_combined_grid(projects, cfg, output_dir)
 
+
 def generate_table_counts(
     projects: list[IndividualProjectContext], output_path: Path
 ) -> None:
@@ -318,15 +340,16 @@ def generate_table_counts(
                 df.select("proposal_id").n_unique() if label == "Proposal" else len(df)
             )
             row.append(count)
-        table_data.append(row)
+            table_data.append(row)
 
     # --- 2. Ensure output directory exists ---
     output_path.mkdir(parents=True, exist_ok=True)
 
     # --- 3. Generate and save Markdown Table ---
-    # Added colalign parameter: left-aligns the project name, right-aligns the numerical columns
     col_alignments = ["left"] + ["right"] * len(table_fields)
-    markdown_table = tabulate(table_data, headers=md_headers, tablefmt="github", colalign=col_alignments)
+    markdown_table = tabulate(
+        table_data, headers=md_headers, tablefmt="github", colalign=col_alignments
+    )
     markdown_output = f"# Table Item Counts by Project\n\n{markdown_table}\n"
 
     with open(output_path / "table_counts.md", "w") as f:
@@ -340,30 +363,23 @@ def generate_table_counts(
         r"    \centering",
         r"    \caption{Overview of dataset counts across different programming languages and technologies.}",
         r"    \label{tab:dataset_counts}",
-        # Changed column definition 'Y' from \centering to \raggedleft for right-alignment
         r"    \newcolumntype{Y}{>{\raggedleft\arraybackslash}X}",
         f"    \\begin{{tabularx}}{{\\textwidth}}{{l*{{{num_data_cols}}}{{Y}}}}",
         r"    \hline",
     ]
 
-    # Escape underscores for LaTeX safety
     escaped_headers = [h.replace("_", r"\_") for h in latex_headers]
     latex_lines.append("    " + " & ".join(escaped_headers) + r" \\")
     latex_lines.append(r"    \hline")
 
-    # Populate numerical data rows
     for row in table_data:
         str_row = []
         for item in row:
-            # Convert to string and strip spaces
             item_str = str(item).strip()
 
-            # Check if the item is a valid integer or float (ignoring signs)
-            # This ensures only numbers get wrapped in \num{...}
             if item_str.replace(".", "", 1).isdigit():
                 str_row.append(f"\\num{{{item_str}}}")
             else:
-                # If it's a text entry, just handle regular LaTeX escaping
                 str_row.append(item_str.replace("_", r"\_"))
 
         latex_lines.append("    " + " & ".join(str_row) + r" \\")
