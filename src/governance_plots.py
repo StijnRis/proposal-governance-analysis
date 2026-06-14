@@ -4,16 +4,13 @@ from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import polars as pl
-import seaborn as sns
 from matplotlib.ticker import MaxNLocator
 from scipy.cluster.hierarchy import dendrogram, linkage
 
 from dataloader import IndividualProjectContext
 from governance_stats import (
     GovernanceProjectStats,
-    KnownGroupsValidationResult,
     get_governance_statistics,
 )
 
@@ -367,106 +364,6 @@ def plot_dimensions_correlation(
     markdown_path.write_text("\n".join(md_lines), encoding="utf-8")
 
 
-def display_validation_results(
-    validation_result: KnownGroupsValidationResult,
-    output_dir: Path,
-    base_font_size: int,
-) -> None:
-    """
-    Consumes a KnownGroupsValidationResult data structure container to print a cleanly formatted
-    markdown summary report table and generate publication-quality evaluation boxplots.
-    """
-    # 1. Parse and print the markdown metrics report table
-    df_table = pl.DataFrame(validation_result.validity_rows)
-    with pl.Config(
-        tbl_formatting="markdown",
-        tbl_hide_dataframe_shape=True,
-        tbl_width_chars=10000,
-        tbl_hide_column_data_types=True,
-        tbl_rows=-1,
-        tbl_cols=-1,
-    ):
-        (output_dir / "governance_validation.md").write_text(
-            str(df_table), encoding="utf-8"
-        )
-
-    # 2. Configure and draw boxplot grid layouts based on identified dimensions
-    num_dims = len(validation_result.dimensions)
-    if num_dims == 0:
-        print("No metrics available to plot.")
-        return
-
-    cols = min(3, num_dims)
-    rows = (num_dims + cols - 1) // cols
-
-    fig, axes = plt.subplots(rows, cols, figsize=(6 * cols, 5.5 * rows))
-    if num_dims == 1:
-        axes = [axes]
-    else:
-        axes = axes.flatten()
-
-    for idx, dim in enumerate(validation_result.dimensions):
-        ax = axes[idx]
-        dim_data = validation_result.group_data[dim]
-
-        # Build flat visualization DataFrame tracking custom category groups
-        plot_records = []
-        for group_name, array_vals in dim_data.items():
-            for val in array_vals:
-                plot_records.append({"Group": group_name, "Value": val})
-        df_plot = pd.DataFrame(plot_records)
-
-        # Extract row metadata values to build informative headers
-        row_meta = next(
-            r
-            for r in validation_result.validity_rows
-            if r["Governance Dimension"] == dim
-        )
-        title_str = (
-            f"{dim}\n{row_meta['Statistical Test']} (p={row_meta['p-value']:.3f})"
-        )
-
-        # Draw boxplots and overlaid individual data points
-        sns.boxplot(
-            x="Group",
-            y="Value",
-            data=df_plot,
-            ax=ax,
-            palette="Pastel1",
-            width=0.4,
-            fliersize=0,
-        )
-        sns.stripplot(
-            x="Group",
-            y="Value",
-            data=df_plot,
-            ax=ax,
-            color="black",
-            alpha=0.6,
-            size=6,
-            jitter=0.1,
-        )
-
-        ax.set_title(title_str, fontsize=base_font_size - 1, fontweight="bold")
-        ax.set_xlabel("", fontsize=base_font_size - 2)
-        ax.set_ylabel("Metric Score", fontsize=base_font_size - 2)
-        ax.tick_params(axis="y", labelsize=base_font_size - 3)
-        ax.grid(axis="y", linestyle="--", alpha=0.4)
-
-        # Rotate text labels dynamically to prevent overlapping
-        ax.set_xticklabels(
-            ax.get_xticklabels(), rotation=15, ha="right", fontsize=base_font_size - 3
-        )
-
-    # Prune any unused axes windows from the grid layout
-    for remaining_idx in range(num_dims, len(axes)):
-        fig.delaxes(axes[remaining_idx])
-
-    plt.tight_layout()
-    plt.savefig(output_dir / "governance_groups_validation.svg", bbox_inches="tight")
-    plt.close()
-
-
 def plot_governance_dendrogram(
     projects_stats: List[GovernanceProjectStats],
     output_dir: Path,
@@ -672,7 +569,7 @@ def show_governance_statistics(
     """Calculates flat trend lines and robust multi-year pooled profiles over all data assets."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    project_records, ordered_keys, known_groups_result = get_governance_statistics(
+    project_records, ordered_keys = get_governance_statistics(
         projects
     )
     dimensions = _get_all_dimensions(project_records, ordered_keys)
@@ -689,7 +586,6 @@ def show_governance_statistics(
     )
     plot_project_radars(project_records, output_dir, dimensions, base_font_size)
     plot_dimensions_correlation(project_records, output_dir, dimensions, base_font_size)
-    display_validation_results(known_groups_result, output_dir, base_font_size)
     plot_governance_dendrogram(project_records, output_dir, dimensions, base_font_size)
     plot_projects_2d(project_records, output_dir, dimensions, base_font_size)
 

@@ -2,9 +2,8 @@
 # Structured Data Containers
 # =====================================================================
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
-import numpy as np
 import polars as pl
 import rustworkx as rx
 
@@ -18,16 +17,6 @@ class GovernanceProjectStats:
     project_name: str
     metrics: Dict[str, Dict[int, float]] = field(default_factory=dict)
     pooled_metrics: Dict[str, float] = field(default_factory=dict)
-
-
-@dataclass
-class KnownGroupsValidationResult:
-    """Holds structured statistical test outputs and arrays cleanly divorced from plotting layers."""
-
-    ordered_keys: List[str]
-    dimensions: List[str]
-    validity_rows: List[Dict[str, Any]]
-    group_data: Dict[str, Dict[str, np.ndarray]]
 
 
 # =====================================================================
@@ -447,7 +436,7 @@ def compute_representation_comment_gini(
 
 def get_governance_statistics(
     projects: List[IndividualProjectContext],
-) -> Tuple[List[GovernanceProjectStats], List[str], KnownGroupsValidationResult]:
+) -> Tuple[List[GovernanceProjectStats], List[str]]:
     """Calculates flat trend lines and robust multi-year pooled profiles over all data assets."""
     computation_registry = {
         "Independence": compute_independence_hhi,
@@ -475,8 +464,4 @@ def get_governance_statistics(
 
         project_records.append(project_container)
 
-    return (
-        project_records,
-        ordered_keys,
-        calculate_known_groups_validity(project_records, ordered_keys),
-    )
+    return (project_records, ordered_keys)
