@@ -132,9 +132,7 @@ def plot_combined_heatmap(
                 )
 
         cbar = fig.colorbar(im, ax=ax)
-        cbar.set_label(
-            "Index over 5 years", size=base_font_size - 2
-        )
+        cbar.set_label("Index over 5 years", size=base_font_size - 2)
         cbar.ax.tick_params(labelsize=base_font_size - 3)
 
         ax.set_title(
@@ -515,9 +513,7 @@ def plot_governance_dendrogram(
             fontweight="bold",
             pad=15,
         )
-        ax.set_ylabel(
-            "Cophetic Distance", fontsize=base_font_size - 2
-        )
+        ax.set_ylabel("Cophetic Distance", fontsize=base_font_size - 2)
         ax.tick_params(axis="y", labelsize=base_font_size - 3)
         ax.grid(axis="y", linestyle="--", alpha=0.4)
 
@@ -562,6 +558,112 @@ def plot_governance_dendrogram(
     markdown_path.write_text("\n".join(md_lines), encoding="utf-8")
 
 
+def plot_projects_2d(
+    projects_stats: List[GovernanceProjectStats],
+    output_dir: Path,
+    dimensions: List[str],
+    base_font_size: int,
+) -> None:
+    """Projects projects into 2D space using PCA (via SVD) and renders a scatter plot."""
+    if len(projects_stats) < 2 or not dimensions:
+        return
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    unique_projects = sorted([p.project_name for p in projects_stats])
+
+    # 1. Structure the project-by-dimension vector space matrix
+    matrix_data = np.zeros((len(unique_projects), len(dimensions)))
+    project_map = {p.project_name: p for p in projects_stats}
+
+    for d_idx, dim in enumerate(dimensions):
+        for p_idx, p_name in enumerate(unique_projects):
+            matrix_data[p_idx, d_idx] = project_map[p_name].pooled_metrics.get(dim, 0.0)
+
+    # 2. Apply PCA using NumPy SVD to avoid external dependencies like scikit-learn
+    mean_vec = np.mean(matrix_data, axis=0)
+    centered_matrix = matrix_data - mean_vec
+
+    coords_2d = np.zeros((len(unique_projects), 2))
+    explained_variance_ratio = [0.0, 0.0]
+
+    if not np.allclose(centered_matrix, 0) and len(unique_projects) > 1:
+        U, S, Vt = np.linalg.svd(centered_matrix, full_matrices=False)
+
+        # Safely compute coordinates based on available dimensions/components
+        num_components = min(2, len(S))
+        if num_components > 0:
+            coords_2d[:, :num_components] = U[:, :num_components] * S[:num_components]
+
+            total_var = np.sum(S**2)
+            if total_var > 0:
+                for i in range(num_components):
+                    explained_variance_ratio[i] = (S[i] ** 2) / total_var
+
+    # 3. Build and save the 2D Scatter Plot
+    fig, ax = plt.subplots(figsize=(11, 8))
+    try:
+        colors = plt.colormaps["tab10"](
+            np.linspace(0, 1, max(10, len(unique_projects)))
+        )
+
+        for idx, p_name in enumerate(unique_projects):
+            x, y = coords_2d[idx, 0], coords_2d[idx, 1]
+            ax.scatter(
+                x,
+                y,
+                s=180,
+                color=colors[idx % len(colors)],
+                label=p_name,
+                alpha=0.85,
+                edgecolors="black",
+                linewidths=1.5,
+                zorder=3,
+            )
+            # Add a clear text label next to each data point
+            ax.text(
+                x,
+                y,
+                f"  {p_name}",
+                fontsize=base_font_size - 4,
+                va="center",
+                ha="left",
+                fontweight="semibold",
+                zorder=4,
+            )
+
+        ax.set_title(
+            "Project Governance Space (2D PCA Projection)",
+            fontsize=base_font_size + 1,
+            fontweight="bold",
+            pad=15,
+        )
+        ax.set_xlabel(
+            f"Principal Component 1 ({explained_variance_ratio[0] * 100:.1f}% Variance)",
+            fontsize=base_font_size - 2,
+        )
+        ax.set_ylabel(
+            f"Principal Component 2 ({explained_variance_ratio[1] * 100:.1f}% Variance)",
+            fontsize=base_font_size - 2,
+        )
+        ax.grid(True, linestyle="--", alpha=0.5, zorder=1)
+        ax.tick_params(axis="both", which="major", labelsize=base_font_size - 3)
+
+        # Add legend outside the plot area
+        ax.legend(
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1),
+            title="Projects",
+            title_fontsize=base_font_size - 2,
+            fontsize=base_font_size - 3,
+            frameon=True,
+        )
+
+        plt.tight_layout()
+        plt.savefig(output_dir / "projects_2d_projection.svg", bbox_inches="tight")
+    finally:
+        plt.close(fig)
+
+
 def show_governance_statistics(
     projects: List[IndividualProjectContext],
     output_dir: Path,
@@ -589,6 +691,7 @@ def show_governance_statistics(
     plot_dimensions_correlation(project_records, output_dir, dimensions, base_font_size)
     display_validation_results(known_groups_result, output_dir, base_font_size)
     plot_governance_dendrogram(project_records, output_dir, dimensions, base_font_size)
+    plot_projects_2d(project_records, output_dir, dimensions, base_font_size)
 
     # Output Tables Summary Generation
     table_data = {"Governance Domain Framework Structure": dimensions}

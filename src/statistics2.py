@@ -1,13 +1,14 @@
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 import matplotlib.pyplot as plt
 import polars as pl
-from tabulate import tabulate
+import tabulate
 
 from dataloader import IndividualProjectContext
+from health_check import ProjectHealthReport
 
 
 @dataclass
@@ -308,87 +309,137 @@ def show_basic_statistics(
 
 
 def generate_table_counts(
-    projects: list[IndividualProjectContext], output_path: Path
+    projects: list["IndividualProjectContext"],
+    reports: List["ProjectHealthReport"],
+    output_path: Path,
 ) -> None:
-    """Generates tracking metrics documents (Markdown and LaTeX) detailing shape allocations per project."""
+    """Generates tracking metrics documents (Markdown and LaTeX) detailing shape allocations per project.
+
+    The layout is transposed: Properties/Tables occupy the rows (Y-axis), while Projects occupy the columns (X-axis).
+    """
     if not projects:
         return
 
+    # Logical hierarchy mapping: (Markdown Display Name, LaTeX Display Name, Context Attribute Name)
     table_fields = [
-        ("Proposal", "proposals"),
+        ("Proposals", "proposals"),
+        ("Related proposals", "related_proposals"),
         ("Revisions", "proposal_revisions"),
-        ("Authors", "proposal_revision_authors"),
         ("Statuses", "proposal_statuses"),
         ("Comments", "comments"),
-        ("Person", "persons"),
+        ("Authors", "proposal_revision_authors"),
+        ("People", "persons"),
         ("Person identifiers", "person_identifiers"),
-        ("Organisations", "organisations"),
+        ("Organizations", "organisations"),
         ("Affiliations", "affiliations"),
-        ("Related proposals", "related_proposals"),
+        ("% revisions with authors", "pct_authored"),
+        ("% people with affiliations", "pct_affiliated"),
     ]
 
-    # --- 1. SWAP LAYOUT: Build Transposed Data ---
-    md_headers = ["Project"] + [label for label, _ in table_fields]
-    latex_headers = ["Project"] + [label for label, _ in table_fields]
+    report_map = {r.project_name: r for r in reports}
+    project_names = [ctx.project_name for ctx in projects]
 
-    table_data = []
-    for ctx in projects:
-        row = [ctx.project_name]
-        for label, attr in table_fields:
-            df = getattr(ctx, attr)
-            count = (
-                df.select("proposal_id").n_unique() if label == "Proposal" else len(df)
-            )
-            row.append(count)
-            table_data.append(row)
+    # --- 1. BUILD TRANSPOSED MATRIX (Rows = Properties, Columns = Projects) ---
+    md_headers = ["Property"] + project_names
+
+    # We will build two distinct data matrices to cleanly separate markdown text from raw LaTeX macros
+    md_table_data = []
+    latex_table_data = []
+
+    for label, attr in table_fields:
+        md_row = [label]
+        latex_row = [label.replace("%", "\\%")]
+
+        for ctx in projects:
+            if attr.startswith("pct_"):
+                report = report_map.get(ctx.project_name)
+                coverage_val = None
+                if report:
+                    for rc in report.relation_coverage:
+                        if (
+                            rc.relation == "person → affiliation (org)"
+                            and attr == "pct_affiliated"
+                        ):
+                            coverage_val = rc.coverage_pct
+                            break
+                        elif (
+                            rc.relation == "proposal_revision → author"
+                            and attr == "pct_authored"
+                        ):
+                            coverage_val = rc.coverage_pct
+                            break
+
+                if coverage_val is None:
+                    raise ValueError(
+                        f"Missing coverage metric for {ctx.project_name} in report."
+                    )
+
+                val_str_md = f"{coverage_val:.1f}%"
+                val_str_ltx = f"\\num{{{coverage_val:.1f}}}\\%"
+            else:
+                df = getattr(ctx, attr)
+                # Keep original behavior: exact length check
+                count = len(df)
+                val_str_md = str(count)
+                val_str_ltx = f"\\num{{{count}}}"
+
+            md_row.append(val_str_md)
+            latex_row.append(val_str_ltx)
+
+        md_table_data.append(md_row)
+        latex_table_data.append(latex_row)
 
     # --- 2. Ensure output directory exists ---
     output_path.mkdir(parents=True, exist_ok=True)
 
     # --- 3. Generate and save Markdown Table ---
-    col_alignments = ["left"] + ["right"] * len(table_fields)
-    markdown_table = tabulate(
-        table_data, headers=md_headers, tablefmt="github", colalign=col_alignments
+    col_alignments_md = ["left"] + ["right"] * len(projects)
+    markdown_table = tabulate.tabulate(
+        md_table_data, headers=md_headers, tablefmt="github", colalign=col_alignments_md
     )
-    markdown_output = f"# Table Item Counts by Project\n\n{markdown_table}\n"
+    markdown_output = f"# Table Item Counts Across Projects\n\n{markdown_table}\n"
 
-    with open(output_path / "table_counts.md", "w") as f:
+    with open(output_path / "table_counts.md", "w", encoding="utf-8") as f:
         f.write(markdown_output)
 
     # --- 4. Generate and save LaTeX Table matching template ---
-    num_data_cols = len(table_fields)
+    num_data_cols = len(projects)
 
     latex_lines = [
         r"\begin{table*}[tb]",
         r"    \centering",
-        r"    \caption{Overview of dataset counts across different programming languages and technologies.}",
+        r"    \caption{Dataset counts across ten SEP systems.}",
         r"    \label{tab:dataset_counts}",
+        r"    \small",
+        r"    \setlength{\tabcolsep}{3pt}",
+        r"    ",
+        r"    % Y is our standard right-aligned data column type",
         r"    \newcolumntype{Y}{>{\raggedleft\arraybackslash}X}",
+        r"    ",
+        r"    ",
         f"    \\begin{{tabularx}}{{\\textwidth}}{{l*{{{num_data_cols}}}{{Y}}}}",
-        r"    \hline",
+        r"    \toprule",
     ]
 
-    escaped_headers = [h.replace("_", r"\_") for h in latex_headers]
-    latex_lines.append("    " + " & ".join(escaped_headers) + r" \\")
-    latex_lines.append(r"    \hline")
+    # Generate Headers with rotation macro applied to the project names on the X-axis
+    latex_headers = ["Property"]
+    for name in project_names:
+        # Sanitize project names containing underscores for LaTeX
+        clean_name = name.replace("_", r"\_")
+        latex_headers.append(f"{clean_name}")
 
-    for row in table_data:
-        str_row = []
-        for item in row:
-            item_str = str(item).strip()
+    latex_lines.append("    " + " & ".join(latex_headers) + r" \\")
+    latex_lines.append(r"    \midrule")
 
-            if item_str.replace(".", "", 1).isdigit():
-                str_row.append(f"\\num{{{item_str}}}")
-            else:
-                str_row.append(item_str.replace("_", r"\_"))
+    # Append rows from the pre-formatted latex matrix
+    for row in latex_table_data:
+        latex_lines.append("    " + " & ".join(row) + r" \\")
 
-        latex_lines.append("    " + " & ".join(str_row) + r" \\")
-
-    latex_lines.append(r"    \hline")
+    latex_lines.append(r"    \bottomrule")
     latex_lines.append(r"    \end{tabularx}")
     latex_lines.append(r"\end{table*}")
 
     latex_table = "\n".join(latex_lines)
 
-    with open(output_path / "table_counts.tex", "w") as f:
+    with open(output_path / "table_counts.tex", "w", encoding="utf-8") as f:
         f.write(latex_table)

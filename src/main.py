@@ -10,6 +10,7 @@ from enhance_data.add_companies import enrich_project_contexts_with_companies
 from enhance_data.merge_companies import merge_duplicate_companies_in_contexts
 from enhance_data.merge_people import merge_duplicate_people
 from governance_plots import show_governance_statistics
+from health_check import diagnose_all_projects, save_combined_report
 from statistics2 import generate_table_counts, show_basic_statistics
 
 
@@ -58,7 +59,10 @@ def main() -> None:
     projects = enrich_project_contexts_with_companies(projects)
     projects = merge_duplicate_companies_in_contexts(projects, output_dir)
 
-    generate_table_counts(projects, output_dir)
+    reports = diagnose_all_projects(projects)
+    save_combined_report(reports, output_dir)
+
+    generate_table_counts(projects, reports, output_dir)
     show_basic_statistics(projects, output_dir)
     show_governance_statistics(projects, output_dir)
 

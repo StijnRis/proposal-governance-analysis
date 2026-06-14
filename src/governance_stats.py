@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Tuple, Union
 import numpy as np
 import polars as pl
 import rustworkx as rx
-import scipy.stats as stats
 
 from statistics2 import IndividualProjectContext
 
@@ -28,9 +27,7 @@ class KnownGroupsValidationResult:
     ordered_keys: List[str]
     dimensions: List[str]
     validity_rows: List[Dict[str, Any]]
-    group_data: Dict[
-        str, Dict[str, np.ndarray]
-    ]  # Formatted as: {dimension: {"Community": array, "Corporate": array}}
+    group_data: Dict[str, Dict[str, np.ndarray]]
 
 
 # =====================================================================
@@ -53,85 +50,17 @@ def _polars_gini_expr(col_name: str) -> pl.Expr:
 # =====================================================================
 # Metric Transformation Engines (Configurable Sliding Window Designs)
 # =====================================================================
+
+
 def compute_independence_hhi(
     ctx: IndividualProjectContext, window_size: int, mode: str
 ) -> Union[float, Dict[int, float]]:
+    """Computes Inverse HHI (1 - HHI) for organizational independence.
+
+    Formula: w_a = p_a + log(1 + c_a)
+    Unmapped/missing affiliations are excluded to avoid data skew.
     """
-    Computes Inverse HHI (1 - HHI) for organizational independence.
-    Optimized: Isolates core proposal authorship shares without log-comment smoothing.
-    """
-    # Group strictly by proposal authorship to separate organizational control
-    proposal_counts = ctx.proposal_revision_authors.group_by(["author_id"]).agg(
-        pl.len().alias("proposal_count")
-    )
-
-    df_authors = (
-        ctx.affiliations.join(ctx.organisations, on="organisation_id", how="inner")
-        .rename({"person_id": "author_id"})
-        .join(
-            proposal_counts, on="author_id", how="inner"
-        )  # Inner join focuses on governing actors
-    )
-
-    first_proposal_date = ctx.proposal_revisions.group_by("proposal_id").agg(
-        pl.col("created_at").min()
-    )
-
-    df = (
-        first_proposal_date.join(
-            ctx.proposal_revision_authors, on="proposal_id", how="inner"
-        )
-        .with_columns(pl.col("created_at").dt.year().alias("year"))
-        .join(df_authors, on="author_id", how="inner")
-    )
-
-    if df.height < 2:
-        return 0.0 if mode == "most_recent" else {}
-
-    def _calculate_core_hhi(sliced_df: pl.DataFrame) -> float:
-        if sliced_df.height < 2:
-            return 0.0
-
-        # Calculate HHI on absolute proposal distribution weight per organization
-        org_shares = sliced_df.group_by("organisation_name").agg(
-            pl.col("proposal_count").sum().alias("total_org_weight")
-        )
-
-        total_weight = org_shares["total_org_weight"].sum()
-        if total_weight == 0:
-            return 0.0
-
-        shares = org_shares["total_org_weight"] / total_weight
-        hhi = (shares**2).sum()
-        return float(1.0 - hhi)
-
-    max_year = df.select(pl.col("year").max()).item()
-
-    if mode == "most_recent":
-        start_year = max_year - window_size + 1
-        pooled_df = df.filter(pl.col("year").is_between(start_year, max_year))
-        return _calculate_core_hhi(pooled_df)
-    elif mode == "all_windows":
-        min_year = df.select(pl.col("year").min()).item()
-        results = {}
-        for end_year in range(min_year, max_year + 1):
-            start_year = end_year - window_size + 1
-            window_df = df.filter(pl.col("year").is_between(start_year, end_year))
-            results[end_year] = _calculate_core_hhi(window_df)
-        return results
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
-
-
-def compute_pluralism_author_gini(
-    ctx: IndividualProjectContext, window_size: int, mode: str
-) -> Union[float, Dict[int, float]]:
-    """
-    Computes Pluralism Score as the inverse Gini Coefficient of proposal authorship.
-    Optimized: Measures all historical revision interactions rather than isolating index 0.
-    """
-    # Evaluate across all revisions to track collaborative community code adjustments
-    df = (
+    proposal_counts = (
         ctx.proposal_revisions.join(
             ctx.proposal_revision_authors,
             on=["proposal_id", "revision_index"],
@@ -139,7 +68,96 @@ def compute_pluralism_author_gini(
         )
         .with_columns(pl.col("created_at").dt.year().alias("year"))
         .filter(pl.col("year").is_not_null())
+        .group_by(["year", "author_id"])
+        .agg(pl.col("proposal_id").n_unique().alias("p_a"))
     )
+
+    comment_counts = (
+        ctx.comments.filter(
+            pl.col("author_id").is_not_null() & pl.col("created_at").is_not_null()
+        )
+        .with_columns(pl.col("created_at").dt.year().alias("year"))
+        .group_by(["year", "author_id"])
+        .agg(pl.len().alias("c_a"))
+    )
+
+    all_years_authors = pl.concat(
+        [
+            proposal_counts.select(["year", "author_id"]),
+            comment_counts.select(["year", "author_id"]),
+        ]
+    ).unique()
+
+    if all_years_authors.is_empty():
+        return 0.0 if mode == "most_recent" else {}
+
+    author_metrics_stream = (
+        all_years_authors.join(proposal_counts, on=["year", "author_id"], how="left")
+        .join(comment_counts, on=["year", "author_id"], how="left")
+        .with_columns(pl.col("p_a").fill_null(0), pl.col("c_a").fill_null(0))
+        .with_columns((pl.col("p_a") + (pl.col("c_a") + 1).log()).alias("w_a"))
+        .join(
+            ctx.affiliations.rename({"person_id": "author_id"}),
+            on="author_id",
+            how="left",
+        )
+        .join(ctx.organisations, on="organisation_id", how="left")
+        .select(["year", "author_id", "organisation_name", "w_a"])
+    )
+
+    def _calculate_core_hhi(sliced_df: pl.DataFrame) -> float:
+        valid_affiliations = sliced_df.filter(pl.col("organisation_name").is_not_null())
+        if valid_affiliations.is_empty():
+            return 0.0
+
+        org_shares = valid_affiliations.group_by("organisation_name").agg(
+            pl.col("w_a").sum().alias("total_org_weight")
+        )
+
+        total_weight = org_shares["total_org_weight"].sum()
+        if total_weight == 0:
+            return 0.0
+
+        return float(1.0 - ((org_shares["total_org_weight"] / total_weight) ** 2).sum())
+
+    max_year = author_metrics_stream.select(pl.col("year").max()).item()
+
+    if mode == "most_recent":
+        pooled_df = author_metrics_stream.filter(
+            pl.col("year").is_between(max_year - window_size + 1, max_year)
+        )
+        return _calculate_core_hhi(pooled_df)
+
+    if mode == "all_windows":
+        min_year = author_metrics_stream.select(pl.col("year").min()).item()
+        return {
+            end_year: _calculate_core_hhi(
+                author_metrics_stream.filter(
+                    pl.col("year").is_between(end_year - window_size + 1, end_year)
+                )
+            )
+            for end_year in range(min_year, max_year + 1)
+        }
+
+    raise ValueError(f"Unknown mode: {mode}")
+
+
+def compute_pluralism_author_gini(
+    ctx: IndividualProjectContext, window_size: int, mode: str
+) -> Union[float, Dict[int, float]]:
+    """Computes Pluralism Score as the inverse Gini Coefficient of distinct proposal authorship."""
+    proposal_years = ctx.proposal_revisions.select(
+        ["proposal_id", pl.col("created_at").dt.year().alias("year")]
+    ).unique()
+
+    author_proposals = ctx.proposal_revision_authors.select(
+        ["proposal_id", "author_id"]
+    ).unique()
+
+    df = proposal_years.join(author_proposals, on="proposal_id", how="inner").filter(
+        pl.col("year").is_not_null()
+    )
+
     if df.is_empty():
         return 0.0 if mode == "most_recent" else {}
 
@@ -148,177 +166,177 @@ def compute_pluralism_author_gini(
             return 0.0
         gini_expr = (
             sliced_df.group_by("author_id")
-            .agg(pl.len().alias("contribution_count"))
-            .select(
-                (1.0 - _polars_gini_expr("contribution_count")).alias("inverse_gini")
-            )
+            .agg(pl.col("proposal_id").n_unique().alias("x_i"))
+            .select((1.0 - _polars_gini_expr("x_i")).alias("inverse_gini"))
         )
         return float(gini_expr.item()) if not gini_expr.is_empty() else 0.0
 
     max_year = df.select(pl.col("year").max()).item()
 
     if mode == "most_recent":
-        start_year = max_year - window_size + 1
-        pooled_df = df.filter(pl.col("year").is_between(start_year, max_year))
+        pooled_df = df.filter(
+            pl.col("year").is_between(max_year - window_size + 1, max_year)
+        )
         return _calculate_core_pluralism(pooled_df)
-    elif mode == "all_windows":
+
+    if mode == "all_windows":
         min_year = df.select(pl.col("year").min()).item()
-        results = {}
-        for end_year in range(min_year, max_year + 1):
-            start_year = end_year - window_size + 1
-            window_df = df.filter(pl.col("year").is_between(start_year, end_year))
-            results[end_year] = _calculate_core_pluralism(window_df)
-        return results
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
+        return {
+            end_year: _calculate_core_pluralism(
+                df.filter(
+                    pl.col("year").is_between(end_year - window_size + 1, end_year)
+                )
+            )
+            for end_year in range(min_year, max_year + 1)
+        }
+
+    raise ValueError(f"Unknown mode: {mode}")
 
 
 def compute_centralization_metrics(
     ctx: IndividualProjectContext, window_size: int, mode: str
 ) -> Union[float, Dict[int, float]]:
-    """
-    Computes Network Betweenness Decentralization Index using bipartite participation.
-    Optimized: Removes intra-project self-normalization loops to expose variance.
-    """
-    rev_df = (
-        ctx.proposal_revision_authors.join(
-            ctx.proposal_revisions, on=["proposal_id", "revision_index"], how="inner"
-        )
-        .with_columns(
-            pl.lit(1.0).alias("auth_weight"),
-            year=pl.col("created_at").dt.year(),
-        )
-        .select(["year", "proposal_id", "author_id", "auth_weight"])
+    """Computes Network Betweenness Decentralization Index using a true bipartite network."""
+    rev_events = ctx.proposal_revision_authors.join(
+        ctx.proposal_revisions,
+        on=["proposal_id", "revision_index"],
+        how="inner",
+    ).select(
+        [
+            pl.col("created_at").dt.year().alias("year"),
+            "proposal_id",
+            "author_id",
+            pl.lit(1.0).alias("a_ip"),
+            pl.lit(0.0).alias("c_ip_count"),
+        ]
     )
 
-    comment_df = (
-        ctx.comments.filter(
-            pl.col("proposal_id").is_not_null() & pl.col("author_id").is_not_null()
-        )
-        .group_by(["proposal_id", "author_id"])
-        .agg(pl.len().alias("c_ip"))
-        # Absolute mathematical scaling without internal division filters
-        .with_columns(normalized_comment_weight=pl.col("c_ip").add(1).log())
+    comment_events = ctx.comments.filter(
+        pl.col("proposal_id").is_not_null() & pl.col("author_id").is_not_null()
+    ).select(
+        [
+            pl.col("created_at").dt.year().alias("year"),
+            "proposal_id",
+            "author_id",
+            pl.lit(0.0).alias("a_ip"),
+            pl.lit(1.0).alias("c_ip_count"),
+        ]
     )
 
-    combined_participation = (
-        rev_df.join(
-            comment_df.select(
-                ["proposal_id", "author_id", "normalized_comment_weight"]
-            ),
-            on=["proposal_id", "author_id"],
-            how="outer",
-        )
-        .with_columns(
-            pl.col("auth_weight").fill_null(0.0),
-            pl.col("normalized_comment_weight").fill_null(0.0),
-        )
-        .with_columns(
-            (pl.col("auth_weight") + pl.col("normalized_comment_weight")).alias(
-                "edge_weight"
-            )
-        )
-    )
-    if combined_participation.is_empty():
+    all_events = pl.concat([rev_events, comment_events])
+
+    if all_events.is_empty():
         return 0.0 if mode == "most_recent" else {}
 
     def _calculate_core_centralization(sliced_df: pl.DataFrame) -> float:
         if sliced_df.is_empty():
             return 1.0
 
-        year_groups = sliced_df.group_by("proposal_id").agg(
-            pl.col("author_id").unique().alias("members")
+        raw_participation = sliced_df.group_by(["proposal_id", "author_id"]).agg(
+            [
+                pl.col("a_ip").max().alias("a_ip"),
+                pl.col("c_ip_count").sum().alias("c_ip"),
+            ]
         )
 
-        edges_map = {}
-        nodes_set = set()
+        m_expr = raw_participation.select(
+            (pl.col("c_ip") + 1).log().max().alias("max_m")
+        )
+        m = (
+            float(m_expr.item())
+            if not m_expr.is_empty() and m_expr.item() is not None
+            else 0.0
+        )
 
-        for row in year_groups.iter_rows(named=True):
-            members = sorted(list(row["members"]))
-            if len(members) < 2:
-                continue
+        participation = raw_participation.with_columns(
+            w_ip=pl.col("a_ip") + ((pl.col("c_ip") + 1).log() / m)
+            if m > 0
+            else pl.col("a_ip")
+        )
 
-            nodes_set.update(members)
-            for i in range(len(members)):
-                for j in range(i + 1, len(members)):
-                    edge_key = (members[i], members[j])
-                    edges_map[edge_key] = edges_map.get(edge_key, 0) + 1
+        unique_authors = participation["author_id"].unique().to_list()
+        unique_proposals = participation["proposal_id"].unique().to_list()
+        n_people = len(unique_authors)
 
-        nodes = list(nodes_set)
-        n = len(nodes)
-        if n < 3:
+        if n_people < 3:
             return 1.0
 
-        node_to_idx = {node: idx for idx, node in enumerate(nodes)}
         g = rx.PyGraph()
-        g.add_nodes_from(nodes)
+        node_map = {}
 
-        yr_edges = [
-            (node_to_idx[k[0]], node_to_idx[k[1]], 1.0 / w)
-            for k, w in edges_map.items()
-        ]
+        for author in unique_authors:
+            node_map[("person", author)] = g.add_node(f"person_{author}")
+        for prop in unique_proposals:
+            node_map[("proposal", prop)] = g.add_node(f"proposal_{prop}")
 
-        if not yr_edges:
-            return 1.0
+        edges_to_add = []
+        for row in participation.iter_rows(named=True):
+            p_node = node_map[("person", row["author_id"])]
+            prop_node = node_map[("proposal", row["proposal_id"])]
+            weight = float(row["w_ip"])
+            edges_to_add.append(
+                (p_node, prop_node, 1.0 / weight if weight > 0 else float("inf"))
+            )
 
-        g.add_edges_from(yr_edges)
+        g.add_edges_from(edges_to_add)
         cb_dict = dict(rx.graph_betweenness_centrality(g, normalized=True))
 
-        cb_vals = [cb_dict.get(i, 0.0) for i in range(n)]
+        person_indices = [node_map[("person", a)] for a in unique_authors]
+        cb_vals = [cb_dict.get(idx, 0.0) for idx in person_indices]
+
         max_cb = max(cb_vals) if cb_vals else 0.0
         cb_sum_diff = sum((max_cb - v) for v in cb_vals)
 
-        cb_denom = float(n - 1)
+        cb_denom = float(n_people - 1)
         cb_index = float(cb_sum_diff / cb_denom if cb_denom > 0 else 0.0)
+
         return float(max(0.0, min(1.0, 1.0 - cb_index)))
 
-    max_year = combined_participation.select(pl.col("year").max()).item()
+    max_year = all_events.select(pl.col("year").max()).item()
 
     if mode == "most_recent":
-        start_year = max_year - window_size + 1
-        pooled_df = combined_participation.filter(
-            pl.col("year").is_between(start_year, max_year)
+        window_df = all_events.filter(
+            pl.col("year").is_between(max_year - window_size + 1, max_year)
         )
-        return _calculate_core_centralization(pooled_df)
-    elif mode == "all_windows":
-        min_year = combined_participation.select(pl.col("year").min()).item()
-        results = {}
-        for end_year in range(min_year, max_year + 1):
-            start_year = end_year - window_size + 1
-            window_df = combined_participation.filter(
-                pl.col("year").is_between(start_year, end_year)
+        return _calculate_core_centralization(window_df)
+
+    if mode == "all_windows":
+        min_year = all_events.select(pl.col("year").min()).item()
+        return {
+            end_year: _calculate_core_centralization(
+                all_events.filter(
+                    pl.col("year").is_between(end_year - window_size + 1, end_year)
+                )
             )
-            results[end_year] = _calculate_core_centralization(window_df)
-        return results
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
+            for end_year in range(min_year, max_year + 1)
+        }
+
+    raise ValueError(f"Unknown mode: {mode}")
 
 
 def compute_newcomers_onboarding(
     ctx: IndividualProjectContext, window_size: int, mode: str
 ) -> Union[float, Dict[int, float]]:
-    """
-    Computes Autonomous Participation Score using Proposal-Weighted Fractional Authorship.
-    Measures the aggregated share of co-authored and single-authored proposal work
-    driven by first-time authors within configurable time windows.
-    """
-    # 1. Establish baseline for globally baseline onboarding (Historical global first entry)
+    """Computes Autonomous Participation Score using Proposal-Weighted Fractional Authorship."""
     author_first_activity = (
         ctx.proposal_revision_authors.join(
             ctx.proposal_revisions, on=["proposal_id", "revision_index"], how="inner"
         )
+        .sort("created_at")
         .group_by("author_id")
-        .agg(first_activity_year=pl.col("created_at").dt.year().min())
+        .agg(
+            first_proposal_id=pl.col("proposal_id").first(),
+            first_activity_year=pl.col("created_at").dt.year().first(),
+        )
     )
 
-    # 2. Extract specific proposal details mapped down to chronological tracking levels
     proposal_base = (
         ctx.proposal_revision_authors.join(
             ctx.proposal_revisions, on=["proposal_id", "revision_index"], how="inner"
         )
         .with_columns(year=pl.col("created_at").dt.year())
         .select(["year", "proposal_id", "author_id"])
-        .unique()  # Filter down to (year, proposal, author) combinations
+        .unique()
     )
 
     if proposal_base.is_empty():
@@ -328,17 +346,15 @@ def compute_newcomers_onboarding(
         if sliced_df.is_empty():
             return 0.0
 
-        # Discover window constraints dynamically
         window_min_year = sliced_df.select(pl.col("year").min()).item()
         window_max_year = sliced_df.select(pl.col("year").max()).item()
 
-        # Connect entry histories to separate newcomer statuses from veterans
-        joined = sliced_df.join(author_first_activity, on="author_id", how="inner")
-
-        # Flag an author as a newcomer if their absolute global first arrival is within this window
-        processed = joined.with_columns(
+        processed = sliced_df.join(
+            author_first_activity, on="author_id", how="inner"
+        ).with_columns(
             pl.when(
-                pl.col("first_activity_year").is_between(
+                (pl.col("proposal_id") == pl.col("first_proposal_id"))
+                & pl.col("first_activity_year").is_between(
                     window_min_year, window_max_year
                 )
             )
@@ -347,8 +363,6 @@ def compute_newcomers_onboarding(
             .alias("is_newcomer")
         )
 
-        # 3. Fractional Split Construction: Evaluate proportional ownership per unique proposal
-        # Calculate total co-authors (denominator) and newcomer counts (numerator) per proposal
         proposal_shares = (
             processed.group_by("proposal_id")
             .agg(total_authors=pl.len(), newcomer_authors=pl.col("is_newcomer").sum())
@@ -362,7 +376,6 @@ def compute_newcomers_onboarding(
         if total_proposals == 0:
             return 0.0
 
-        # Mean fractional ownership across all explicit system proposals
         return float(
             proposal_shares["fractional_newcomer_share"].sum() / total_proposals
         )
@@ -370,24 +383,23 @@ def compute_newcomers_onboarding(
     max_year = proposal_base.select(pl.col("year").max()).item()
 
     if mode == "most_recent":
-        start_year = max_year - window_size + 1
         pooled_df = proposal_base.filter(
-            pl.col("year").is_between(start_year, max_year)
+            pl.col("year").is_between(max_year - window_size + 1, max_year)
         )
         return _calculate_core_onboarding(pooled_df)
 
-    elif mode == "all_windows":
+    if mode == "all_windows":
         min_year = proposal_base.select(pl.col("year").min()).item()
-        results = {}
-        for end_year in range(min_year, max_year + 1):
-            start_year = end_year - window_size + 1
-            window_df = proposal_base.filter(
-                pl.col("year").is_between(start_year, end_year)
+        return {
+            end_year: _calculate_core_onboarding(
+                proposal_base.filter(
+                    pl.col("year").is_between(end_year - window_size + 1, end_year)
+                )
             )
-            results[end_year] = _calculate_core_onboarding(window_df)
-        return results
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
+            for end_year in range(min_year, max_year + 1)
+        }
+
+    raise ValueError(f"Unknown mode: {mode}")
 
 
 def compute_representation_comment_gini(
@@ -414,204 +426,29 @@ def compute_representation_comment_gini(
     max_year = df.select(pl.col("year").max()).item()
 
     if mode == "most_recent":
-        start_year = max_year - window_size + 1
-        pooled_df = df.filter(pl.col("year").is_between(start_year, max_year))
+        pooled_df = df.filter(
+            pl.col("year").is_between(max_year - window_size + 1, max_year)
+        )
         return _calculate_core_representation(pooled_df)
 
-    elif mode == "all_windows":
+    if mode == "all_windows":
         min_year = df.select(pl.col("year").min()).item()
-        results = {}
-        for end_year in range(min_year, max_year + 1):
-            start_year = end_year - window_size + 1
-            window_df = df.filter(pl.col("year").is_between(start_year, end_year))
-            results[end_year] = _calculate_core_representation(window_df)
-        return results
-    else:
-        raise ValueError(f"Unknown mode: {mode}")
-
-
-def calculate_known_groups_validity(
-    project_records: List[GovernanceProjectStats],
-    ordered_keys: List[str],
-) -> KnownGroupsValidationResult:
-    """
-    Groups metrics into archetypes using a custom multidimensional classification matrix
-    and executes appropriate non-parametric statistical validity tests (Mann-Whitney U or Kruskal-Wallis).
-    """
-    # Custom multidimensional classification dictionary
-    splits = {
-        "Independence": {
-            "C++": "Foundation/Committee",
-            "JavaScript": "Foundation/Committee",
-            "Kubernetes": "Foundation/Committee",
-            "NumPy": "Foundation/Committee",
-            "Pandas": "Foundation/Committee",
-            "Python": "Foundation/Committee",
-            "Rust": "Foundation/Committee",
-            "Kotlin": "Vendor-Dominated",
-            "OpenJDK": "Vendor-Dominated",
-            "Swift": "Vendor-Dominated",
-        },
-        "Pluralism": {
-            "C++": "Formal Standards Spec",
-            "JavaScript": "Formal Standards Spec",
-            "OpenJDK": "Formal Standards Spec",
-            "Kotlin": "Applied Software/Libs",
-            "Kubernetes": "Applied Software/Libs",
-            "NumPy": "Applied Software/Libs",
-            "Pandas": "Applied Software/Libs",
-            "Python": "Applied Software/Libs",
-            "Rust": "Applied Software/Libs",
-            "Swift": "Applied Software/Libs",
-        },
-        "Representation": {
-            "C++": "High-Volume Scale",
-            "JavaScript": "High-Volume Scale",
-            "Kubernetes": "High-Volume Scale",
-            "Python": "High-Volume Scale",
-            "Rust": "High-Volume Scale",
-            "Kotlin": "Focused/Low-Volume",
-            "NumPy": "Focused/Low-Volume",
-            "OpenJDK": "Focused/Low-Volume",
-            "Pandas": "Focused/Low-Volume",
-            "Swift": "Focused/Low-Volume",
-        },
-        "Decentralized Decision-Making": {
-            "C++": "Highly-Decentralized",
-            "JavaScript": "Highly-Decentralized",
-            "Kubernetes": "Moderately-Decentralized",
-            "NumPy": "Moderately-Decentralized",
-            "Pandas": "Moderately-Decentralized",
-            "Python": "Moderately-Decentralized",
-            "Rust": "Moderately-Decentralized",
-            "Kotlin": "Centralized",
-            "OpenJDK": "Centralized",
-            "Swift": "Centralized",
-        },
-        "Autonomous Participation": {
-            "C++": "Committee-Oriented",
-            "JavaScript": "Committee-Oriented",
-            "OpenJDK": "Committee-Oriented",
-            "Python": "Committee-Oriented",
-            "Kotlin": "GitHub-Native",
-            "Kubernetes": "GitHub-Native",
-            "NumPy": "GitHub-Native",
-            "Pandas": "GitHub-Native",
-            "Rust": "GitHub-Native",
-            "Swift": "GitHub-Native",
-        },
-    }
-
-    present_dims = {dim for p in project_records for dim in p.metrics}
-    dimensions = [dim for dim in ordered_keys if dim in present_dims]
-
-    validity_rows = []
-    group_data = {}
-
-    for dim in dimensions:
-        dim_splits = splits.get(dim, {})
-
-        # Sort and gather scalar items into respective group arrays
-        raw_groups = {}
-        for p_obj in project_records:
-            proj_name = p_obj.project_name
-            g_name = dim_splits.get(proj_name)
-            if g_name and dim in p_obj.pooled_metrics:
-                val = p_obj.pooled_metrics[dim]
-                if g_name not in raw_groups:
-                    raw_groups[g_name] = []
-                raw_groups[g_name].append(val)
-
-        # Consolidate into arrays
-        sorted_g_names = sorted(list(raw_groups.keys()))
-        dim_group_arrays = {g: np.array(raw_groups[g]) for g in sorted_g_names}
-        group_data[dim] = dim_group_arrays
-
-        # Evaluate group depth to run the correct statistical engine
-        if len(sorted_g_names) == 2:
-            g1_name, g2_name = sorted_g_names[0], sorted_g_names[1]
-            arr1, arr2 = dim_group_arrays[g1_name], dim_group_arrays[g2_name]
-
-            test_name = "Mann-Whitney U"
-            u_stat, p_val = stats.mannwhitneyu(arr1, arr2, alternative="two-sided")
-            stat_val = u_stat
-
-            # Calculate standard Cohen's d Effect Size
-            mean1, mean2 = np.mean(arr1), np.mean(arr2)
-            std1, std2 = np.std(arr1, ddof=1), np.std(arr2, ddof=1)
-            n1, n2 = len(arr1), len(arr2)
-            denom = n1 + n2 - 2
-            pooled_std = (
-                np.sqrt((((n1 - 1) * std1**2) + ((n2 - 1) * std2**2)) / denom)
-                if denom > 0
-                else 1.0
+        return {
+            end_year: _calculate_core_representation(
+                df.filter(
+                    pl.col("year").is_between(end_year - window_size + 1, end_year)
+                )
             )
-            effect_size = (mean1 - mean2) / pooled_std if pooled_std != 0 else 0.0
-            effect_metric = "Cohen's d"
+            for end_year in range(min_year, max_year + 1)
+        }
 
-        elif len(sorted_g_names) > 2:
-            test_name = "Kruskal-Wallis"
-            arrays_list = [dim_group_arrays[g] for g in sorted_g_names]
-            h_stat, p_val = stats.kruskal(*arrays_list)
-            stat_val = h_stat
-
-            # Calculate non-parametric Eta-squared (η²) for multi-group scenarios
-            k = len(sorted_g_names)
-            n_total = sum(len(arr) for arr in arrays_list)
-            effect_size = (h_stat - k + 1) / (n_total - k) if (n_total - k) > 0 else 0.0
-            effect_metric = "Eta-squared (η²)"
-        else:
-            test_name, stat_val, p_val, effect_metric, effect_size = (
-                "None",
-                0.0,
-                1.0,
-                "N/A",
-                0.0,
-            )
-
-        # Build descriptive context string mapping group averages
-        details_list = []
-        for g in sorted_g_names:
-            arr = dim_group_arrays[g]
-            details_list.append(f"{g}: μ={np.mean(arr):.3f}, med={np.median(arr):.3f}")
-        group_summary = "; ".join(details_list)
-
-        # Apply tiered evaluation filters adjusted for small N samples
-        if p_val < 0.05:
-            is_valid = "Yes (p < 0.05)"
-        elif effect_metric == "Cohen's d" and abs(effect_size) >= 0.8:
-            is_valid = f"Practical (d = {round(effect_size, 2)})"
-        elif effect_metric == "Eta-squared (η²)" and effect_size >= 0.14:
-            is_valid = f"Practical (η² = {round(effect_size, 2)})"
-        else:
-            is_valid = "No"
-
-        validity_rows.append(
-            {
-                "Governance Dimension": dim,
-                "Statistical Test": test_name,
-                "Test Statistic": round(stat_val, 4),
-                "p-value": round(p_val, 4),
-                "Effect Metric": effect_metric,
-                "Effect Size": round(effect_size, 4),
-                "Group Summaries": group_summary,
-                "Discriminant Validity Status": is_valid,
-            }
-        )
-
-    return KnownGroupsValidationResult(
-        ordered_keys=ordered_keys,
-        dimensions=dimensions,
-        validity_rows=validity_rows,
-        group_data=group_data,
-    )
+    raise ValueError(f"Unknown mode: {mode}")
 
 
 def get_governance_statistics(
     projects: List[IndividualProjectContext],
 ) -> Tuple[List[GovernanceProjectStats], List[str], KnownGroupsValidationResult]:
     """Calculates flat trend lines and robust multi-year pooled profiles over all data assets."""
-
     computation_registry = {
         "Independence": compute_independence_hhi,
         "Pluralism": compute_pluralism_author_gini,
@@ -628,17 +465,18 @@ def get_governance_statistics(
         project_container = GovernanceProjectStats(project_name=ctx.project_name)
 
         for stat_domain, compute_fn in computation_registry.items():
-            # 1. Timeline Breakdown: window_size=1 across historical slices maps exactly to separate annual datapoints
             yearly_results = compute_fn(ctx, window_size=1, mode="all_windows")
             if yearly_results:
                 project_container.metrics[stat_domain] = yearly_results
 
-            # 2. Pooled Matrix: window_size=5 tracks a block snapshot for heatmaps, parallel trends, and tabular indices
-            pooled_result = compute_fn(ctx, window_size=5, mode="most_recent")
-            project_container.pooled_metrics[stat_domain] = pooled_result
+            project_container.pooled_metrics[stat_domain] = compute_fn(
+                ctx, window_size=5, mode="most_recent"
+            )
 
         project_records.append(project_container)
 
-    known_groups_result = calculate_known_groups_validity(project_records, ordered_keys)
-
-    return project_records, ordered_keys, known_groups_result
+    return (
+        project_records,
+        ordered_keys,
+        calculate_known_groups_validity(project_records, ordered_keys),
+    )

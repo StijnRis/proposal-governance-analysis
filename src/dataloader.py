@@ -352,6 +352,9 @@ def load_all_projects(
 
     # Extract clean contexts from each file individually
     for path in db_paths:
+        # if "pepscraper" not in path.name.lower():
+        #     print(f"Skipping non-matching file: {path}")
+        #     continue
         print(f"Processing database: {path}")
         conn = sqlite3.connect(str(path))
         try:
