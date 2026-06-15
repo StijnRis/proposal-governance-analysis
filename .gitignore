@@ -13,3 +13,5 @@ output/
 .env
 data/proposals
 data/github_cache
+.coverage
+.pytest_cache/

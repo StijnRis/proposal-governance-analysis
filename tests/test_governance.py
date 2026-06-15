@@ -42,7 +42,7 @@ def empty_context():
             schema={
                 "proposal_id": pl.Int64,
                 "revision_index": pl.Int64,
-                "created_at": pl.Datetime,  # <--- This prevents the pl.Null crash!
+                "created_at": pl.Datetime, 
             },
         ),
         proposal_revision_authors=pl.DataFrame(
@@ -58,7 +58,7 @@ def empty_context():
             schema={
                 "proposal_id": pl.Int64,
                 "author_id": pl.Int64,
-                "created_at": pl.Datetime,  # <--- Fix here too for representation/centralization
+                "created_at": pl.Datetime,
             },
         ),
         affiliations=pl.DataFrame(
@@ -161,6 +161,57 @@ def test_bootstrap_interval_fallback():
     assert res["val"] == 20.0
     assert res["ci_low"] == 20.0
     assert res["ci_high"] == 20.0
+
+def test_bootstrap_interval_execution_and_bounds():
+    """Verifies that bootstrap runs resampling when clusters >= 5 and bounds are sane."""
+    # Data with 6 unique clusters (1 through 6) to pass the cluster len check
+    df = pl.DataFrame({
+        "cluster": [1, 2, 3, 4, 5, 6],
+        "value": [10.0, 15.0, 50.0, 55.0, 90.0, 100.0]
+    })
+
+    def calc_mean(sliced_df):
+        return sliced_df["value"].mean()
+
+    # Run with a 95% CI
+    res = _bootstrap_interval(
+        df, 
+        calc_mean, 
+        cluster_col="cluster", 
+        n_bootstraps=100, 
+        ci=0.95
+    )
+
+    # 1. Assert the point estimate is calculated correctly
+    assert res["val"] == pytest.approx(53.3333, rel=1e-4)
+    
+    # 2. Assert variance was actually captured (Confidence bounds are spread apart)
+    assert res["ci_low"] < res["val"]
+    assert res["ci_high"] > res["val"]
+    
+    # 3. Assert confidence intervals remain strictly inside the logical range of data
+    assert res["ci_low"] >= 10.0
+    assert res["ci_high"] <= 100.0
+
+
+def test_bootstrap_interval_deterministic_seeding():
+    """Asserts that the internal seed management renders perfectly reproducible results."""
+    df = pl.DataFrame({
+        "cluster": [1, 2, 3, 4, 5, 6],
+        "value": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+    })
+    
+    def calc_mean(sliced_df):
+        return sliced_df["value"].mean()
+
+    # Execute twice independently
+    res_first = _bootstrap_interval(df, calc_mean, cluster_col="cluster", n_bootstraps=50)
+    res_second = _bootstrap_interval(df, calc_mean, cluster_col="cluster", n_bootstraps=50)
+
+    # Because you used np.random.default_rng(42) internally, 
+    # these values must match down to the decimal point across test invocations.
+    assert res_first["ci_low"] == res_second["ci_low"]
+    assert res_first["ci_high"] == res_second["ci_high"]
 
 
 # =====================================================================
