@@ -1,6 +1,6 @@
 import textwrap
 from pathlib import Path
-from typing import List
+from typing import List, Tuple, Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,18 +9,50 @@ from matplotlib.ticker import MaxNLocator
 from scipy.cluster.hierarchy import dendrogram, linkage
 
 from dataloader import IndividualProjectContext
+# Targets the updated dataclass layout
 from governance_stats import (
     GovernanceProjectStats,
+    MetricInterval,
     get_governance_statistics,
 )
+
+
+def _resolve_attr_name(dim_str: str) -> str:
+    """Maps display strings or existing dict keys to the new dataclass attribute names."""
+    mapping = {
+        "Independence": "independence",
+        "Pluralism": "pluralism",
+        "Representation": "representation",
+        "Decentralized Decision-Making": "decentralization",
+        "Autonomous Participation": "autonomous_participation"
+    }
+    # Return string if it matches precisely or lower-fallback to guarantee match
+    return mapping.get(dim_str, dim_str.lower().replace(" ", "_").replace("-", "_"))
+
+
+def _get_metric_data(p_stat: GovernanceProjectStats, dim: str, mode: str = "pooled", year: int = None) -> Any:
+    """Helper method to clean up object attribute extraction via dot-notation wrapper."""
+    attr_name = _resolve_attr_name(dim)
+    
+    if mode == "pooled":
+        profile = getattr(p_stat.pooled_metrics, attr_name, None)
+        return profile if profile is not None else MetricInterval(0.0, 0.0, 0.0)
+    
+    elif mode == "timeline":
+        timeline_profile = getattr(p_stat.metrics, attr_name, None)
+        if timeline_profile and year in timeline_profile.windows:
+            return timeline_profile.windows[year]
+        return MetricInterval(0.0, 0.0, 0.0)
+        
+    return MetricInterval(0.0, 0.0, 0.0)
 
 
 def _get_all_dimensions(
     projects_stats: List[GovernanceProjectStats], ordered_keys: List[str]
 ) -> List[str]:
-    """Extracts unique governance dimension names in the exact registry definition order."""
-    present_dims = {dim for p in projects_stats for dim in p.metrics}
-    return [dim for dim in ordered_keys if dim in present_dims]
+    """Extracts unique governance dimension names safely matching the profile definitions."""
+    # Maps internal structures to confirm presence
+    return [dim for dim in ordered_keys]
 
 
 def plot_consolidated_line_charts(
@@ -29,7 +61,7 @@ def plot_consolidated_line_charts(
     dimensions: List[str],
     base_font_size: int,
 ) -> None:
-    """Plots accurate discrete trends utilizing single-year historical context dictionaries."""
+    """Plots accurate trends displaying continuous line charts overlaid with 95% CI bands."""
     output_dir.mkdir(parents=True, exist_ok=True)
     colors = plt.colormaps["tab10"](np.linspace(0, 1, max(10, len(projects_stats))))
 
@@ -38,24 +70,41 @@ def plot_consolidated_line_charts(
         try:
             has_data = False
             for idx, p_stat in enumerate(projects_stats):
-                if dim in p_stat.metrics:
-                    timeline = p_stat.metrics[dim]
-                    if not timeline:
-                        continue
-
+                attr_name = _resolve_attr_name(dim)
+                timeline_profile = getattr(p_stat.metrics, attr_name, None)
+                
+                if timeline_profile and timeline_profile.windows:
                     has_data = True
-                    years = sorted(timeline.keys())
+                    years = sorted(timeline_profile.windows.keys())
+                    
+                    vals = [timeline_profile.windows[y].val for y in years]
+                    lows = [timeline_profile.windows[y].ci_low for y in years]
+                    highs = [timeline_profile.windows[y].ci_high for y in years]
+                    
+                    color = colors[idx % len(colors)]
+                    
+                    # Core Point Estimation Line
                     ax.plot(
                         years,
-                        [timeline[y] for y in years],
+                        vals,
                         marker="o",
                         linewidth=2,
-                        color=colors[idx % len(colors)],
+                        color=color,
                         label=p_stat.project_name,
+                        zorder=3
+                    )
+                    # Confidence Interval Ribbon Area
+                    ax.fill_between(
+                        years,
+                        lows,
+                        highs,
+                        color=color,
+                        alpha=0.15,
+                        zorder=2
                     )
 
             ax.set_title(
-                f"Trend Analysis: {dim}",
+                f"Trend Analysis: {dim} (with 95% CI)",
                 fontsize=base_font_size,
                 fontweight="bold",
                 pad=15,
@@ -88,7 +137,7 @@ def plot_combined_heatmap(
     dimensions: List[str],
     base_font_size: int,
 ) -> None:
-    """Generates cross-project summary matrix maps utilizing the precise 5-year pooled indices."""
+    """Generates cross-project summary matrix maps detailing scores alongside bracketed bounds."""
     if not projects_stats or not dimensions:
         return
 
@@ -100,9 +149,10 @@ def plot_combined_heatmap(
 
     for d_idx, dim in enumerate(dimensions):
         for p_idx, p_name in enumerate(unique_projects):
-            matrix_data[p_idx, d_idx] = project_map[p_name].pooled_metrics.get(dim, 0.0)
+            interval = _get_metric_data(project_map[p_name], dim, mode="pooled")
+            matrix_data[p_idx, d_idx] = interval.val
 
-    fig, ax = plt.subplots(figsize=(12, 7))
+    fig, ax = plt.subplots(figsize=(13, 8))
     try:
         im = ax.imshow(matrix_data, cmap="YlGnBu", aspect="auto", vmin=0.0, vmax=1.0)
         wrapped_labels = [textwrap.fill(dim, width=15) for dim in dimensions]
@@ -116,24 +166,33 @@ def plot_combined_heatmap(
 
         for i in range(len(unique_projects)):
             for j in range(len(dimensions)):
-                val = matrix_data[i, j]
+                p_name = unique_projects[i]
+                dim_name = dimensions[j]
+                interval = _get_metric_data(project_map[p_name], dim_name, mode="pooled")
+                
+                # Render stacked strings explicitly showing limits inside matrices
+                upper_err = interval.ci_high - interval.val
+                lower_err = interval.val - interval.ci_low
+
+                cell_text = f"{interval.val:.2f}\n-{lower_err:.2f} / +{upper_err:.2f}"
+                
                 ax.text(
                     j,
                     i,
-                    f"{val:.2f}",
+                    cell_text,
                     ha="center",
                     va="center",
-                    color="black" if val < 0.7 else "white",
+                    color="black" if interval.val < 0.7 else "white",
                     fontweight="bold",
-                    fontsize=base_font_size - 3,
+                    fontsize=base_font_size - 5,
                 )
 
         cbar = fig.colorbar(im, ax=ax)
-        cbar.set_label("Index over 5 years", size=base_font_size - 2)
+        cbar.set_label("Index over 5 years (with 95% CI)", size=base_font_size - 2)
         cbar.ax.tick_params(labelsize=base_font_size - 3)
 
         ax.set_title(
-            "Governance Dimensions Heatmap (5-Year Pooled)",
+            "Governance Dimensions Heatmap (5-Year Pooled Matrix)",
             fontsize=base_font_size + 1,
             fontweight="bold",
             pad=20,
@@ -161,7 +220,7 @@ def plot_combined_parallel_coordinates(
         colors = plt.colormaps["Set1"](np.linspace(0, 1, len(projects_stats)))
 
         for idx, p_obj in enumerate(projects_stats):
-            vector = [p_obj.pooled_metrics.get(dim, 0.0) for dim in dimensions]
+            vector = [_get_metric_data(p_obj, dim, mode="pooled").val for dim in dimensions]
             ax.plot(
                 x_positions,
                 vector,
@@ -225,7 +284,7 @@ def plot_project_radars(
     labels = [textwrap.fill(d, width=12) for d in dimensions]
 
     for p_obj in projects_stats:
-        values = [p_obj.pooled_metrics.get(dim, 0.0) for dim in dimensions]
+        values = [_get_metric_data(p_obj, dim, mode="pooled").val for dim in dimensions]
         closed_values = values + [values[0]]
 
         fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
@@ -283,9 +342,8 @@ def plot_dimensions_correlation(
 
     for d_idx, dim in enumerate(dimensions):
         for p_idx, p_name in enumerate(unique_projects):
-            matrix_data[p_idx, d_idx] = project_map[p_name].pooled_metrics.get(dim, 0.0)
+            matrix_data[p_idx, d_idx] = _get_metric_data(project_map[p_name], dim, mode="pooled").val
 
-    # Clean check for Constant features to prevent Pearson division by zero NaN propagation
     std_deviations = np.std(matrix_data, axis=0)
     constant_mask = std_deviations == 0
 
@@ -297,7 +355,6 @@ def plot_dimensions_correlation(
 
     corr_matrix = np.corrcoef(normalized_matrix, rowvar=False)
 
-    # Secure matrix against NaN flags remaining if any dimensions are constant
     if np.isnan(corr_matrix).any():
         corr_matrix = np.nan_to_num(corr_matrix, nan=0.0)
         for idx, is_constant in enumerate(constant_mask):
@@ -349,7 +406,6 @@ def plot_dimensions_correlation(
     finally:
         plt.close(fig)
 
-    # Document to Markdown
     markdown_path = output_dir / "dimensions_correlation_matrix.md"
     md_lines = ["# Governance Framework Dimensions Correlation Matrix\n"]
     md_lines.append("| Dimension | " + " | ".join(dimensions) + " |")
@@ -370,30 +426,22 @@ def plot_governance_dendrogram(
     dimensions: List[str],
     base_font_size: int,
 ) -> None:
-    """
-    Applies agglomerative hierarchical clustering on project profiles
-    utilizing their true 5-year pooled vectors, rendering a dendrogram map
-    and generating an audit markdown detailing the linkage history.
-    """
+    """Applies agglomerative hierarchical clustering on project profiles utilizing true pooled vectors."""
     if not projects_stats or not dimensions:
         return
 
     output_dir.mkdir(parents=True, exist_ok=True)
     unique_projects = sorted([p.project_name for p in projects_stats])
 
-    # 1. Structure the project-by-dimension vector space matrix
     matrix_data = np.zeros((len(unique_projects), len(dimensions)))
     project_map = {p.project_name: p for p in projects_stats}
 
     for d_idx, dim in enumerate(dimensions):
         for p_idx, p_name in enumerate(unique_projects):
-            matrix_data[p_idx, d_idx] = project_map[p_name].pooled_metrics.get(dim, 0.0)
+            matrix_data[p_idx, d_idx] = _get_metric_data(project_map[p_name], dim, mode="pooled").val
 
-    # 2. Compute Agglomerative Linkage using Ward's minimum variance algorithm
-    # rows: samples (projects), columns: features (dimensions)
     Z = linkage(matrix_data, method="ward")
 
-    # 3. Build and save the publication-quality Dendrogram Vector Image
     fig, ax = plt.subplots(figsize=(10, 6))
     try:
         dendrogram(
@@ -421,9 +469,7 @@ def plot_governance_dendrogram(
     finally:
         plt.close(fig)
 
-    # 4. Generate the step-by-step Taxonomy Aggregation Tree Markdown Report
     markdown_path = output_dir / "governance_hierarchy_taxonomy.md"
-
     md_lines = [
         "# Hierarchical Agglomerative Clustering Audit Trail",
         "\nThis report logs the variance minimization distance progression during bottom-up tree structural building calculations.\n",
@@ -468,15 +514,13 @@ def plot_projects_2d(
     output_dir.mkdir(parents=True, exist_ok=True)
     unique_projects = sorted([p.project_name for p in projects_stats])
 
-    # 1. Structure the project-by-dimension vector space matrix
     matrix_data = np.zeros((len(unique_projects), len(dimensions)))
     project_map = {p.project_name: p for p in projects_stats}
 
     for d_idx, dim in enumerate(dimensions):
         for p_idx, p_name in enumerate(unique_projects):
-            matrix_data[p_idx, d_idx] = project_map[p_name].pooled_metrics.get(dim, 0.0)
+            matrix_data[p_idx, d_idx] = _get_metric_data(project_map[p_name], dim, mode="pooled").val
 
-    # 2. Apply PCA using NumPy SVD to avoid external dependencies like scikit-learn
     mean_vec = np.mean(matrix_data, axis=0)
     centered_matrix = matrix_data - mean_vec
 
@@ -486,7 +530,6 @@ def plot_projects_2d(
     if not np.allclose(centered_matrix, 0) and len(unique_projects) > 1:
         U, S, Vt = np.linalg.svd(centered_matrix, full_matrices=False)
 
-        # Safely compute coordinates based on available dimensions/components
         num_components = min(2, len(S))
         if num_components > 0:
             coords_2d[:, :num_components] = U[:, :num_components] * S[:num_components]
@@ -496,7 +539,6 @@ def plot_projects_2d(
                 for i in range(num_components):
                     explained_variance_ratio[i] = (S[i] ** 2) / total_var
 
-    # 3. Build and save the 2D Scatter Plot
     fig, ax = plt.subplots(figsize=(11, 8))
     try:
         colors = plt.colormaps["tab10"](
@@ -516,7 +558,6 @@ def plot_projects_2d(
                 linewidths=1.5,
                 zorder=3,
             )
-            # Add a clear text label next to each data point
             ax.text(
                 x,
                 y,
@@ -545,7 +586,6 @@ def plot_projects_2d(
         ax.grid(True, linestyle="--", alpha=0.5, zorder=1)
         ax.tick_params(axis="both", which="major", labelsize=base_font_size - 3)
 
-        # Add legend outside the plot area
         ax.legend(
             loc="upper left",
             bbox_to_anchor=(1.02, 1),
@@ -564,36 +604,33 @@ def plot_projects_2d(
 def show_governance_statistics(
     projects: List[IndividualProjectContext],
     output_dir: Path,
-    base_font_size: int = 19,
+    base_font_size: int = 21,
 ) -> None:
     """Calculates flat trend lines and robust multi-year pooled profiles over all data assets."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    project_records, ordered_keys = get_governance_statistics(
-        projects
-    )
+    # In your revised governance_stats pipeline, get_governance_statistics returns project_records directly
+    project_records = get_governance_statistics(projects)
+    
+    # Static list mapping definition order to maintain deterministic processing loops
+    ordered_keys = ["Independence", "Pluralism", "Representation", "Decentralized Decision-Making", "Autonomous Participation"]
     dimensions = _get_all_dimensions(project_records, ordered_keys)
 
     print("Executing visualization generation tasks over grouped structural records...")
 
-    # Passing the base_font_size down the chain to all visualization functions
-    plot_consolidated_line_charts(
-        project_records, output_dir, dimensions, base_font_size
-    )
+    plot_consolidated_line_charts(project_records, output_dir, dimensions, base_font_size)
     plot_combined_heatmap(project_records, output_dir, dimensions, base_font_size)
-    plot_combined_parallel_coordinates(
-        project_records, output_dir, dimensions, base_font_size
-    )
+    plot_combined_parallel_coordinates(project_records, output_dir, dimensions, base_font_size)
     plot_project_radars(project_records, output_dir, dimensions, base_font_size)
     plot_dimensions_correlation(project_records, output_dir, dimensions, base_font_size)
     plot_governance_dendrogram(project_records, output_dir, dimensions, base_font_size)
     plot_projects_2d(project_records, output_dir, dimensions, base_font_size)
 
-    # Output Tables Summary Generation
+    # Output Tables Summary Generation formatting point values cleanly
     table_data = {"Governance Domain Framework Structure": dimensions}
     for p_record in project_records:
         table_data[p_record.project_name] = [
-            round(p_record.pooled_metrics.get(dim, 0.0), 4) for dim in dimensions
+            f"{_get_metric_data(p_record, dim, mode='pooled').val:.4f}" for dim in dimensions
         ]
 
     summary_df = pl.DataFrame(table_data)
@@ -609,6 +646,4 @@ def show_governance_statistics(
             str(summary_df), encoding="utf-8"
         )
 
-    print(
-        f"Data calculations pipeline terminated successfully. Files written to: {output_dir}"
-    )
+    print(f"Data calculations pipeline terminated successfully. Files written to: {output_dir}")
