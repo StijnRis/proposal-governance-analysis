@@ -1,6 +1,6 @@
 import textwrap
 from pathlib import Path
-from typing import List, Tuple, Any
+from typing import Any, List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,6 +9,7 @@ from matplotlib.ticker import MaxNLocator
 from scipy.cluster.hierarchy import dendrogram, linkage
 
 from dataloader import IndividualProjectContext
+
 # Targets the updated dataclass layout
 from governance_stats import (
     GovernanceProjectStats,
@@ -24,26 +25,28 @@ def _resolve_attr_name(dim_str: str) -> str:
         "Pluralism": "pluralism",
         "Representation": "representation",
         "Decentralized Decision-Making": "decentralization",
-        "Autonomous Participation": "autonomous_participation"
+        "Autonomous Participation": "autonomous_participation",
     }
     # Return string if it matches precisely or lower-fallback to guarantee match
     return mapping.get(dim_str, dim_str.lower().replace(" ", "_").replace("-", "_"))
 
 
-def _get_metric_data(p_stat: GovernanceProjectStats, dim: str, mode: str = "pooled", year: int = None) -> Any:
+def _get_metric_data(
+    p_stat: GovernanceProjectStats, dim: str, mode: str = "pooled", year: int = None
+) -> Any:
     """Helper method to clean up object attribute extraction via dot-notation wrapper."""
     attr_name = _resolve_attr_name(dim)
-    
+
     if mode == "pooled":
         profile = getattr(p_stat.pooled_metrics, attr_name, None)
         return profile if profile is not None else MetricInterval(0.0, 0.0, 0.0)
-    
+
     elif mode == "timeline":
         timeline_profile = getattr(p_stat.metrics, attr_name, None)
         if timeline_profile and year in timeline_profile.windows:
             return timeline_profile.windows[year]
         return MetricInterval(0.0, 0.0, 0.0)
-        
+
     return MetricInterval(0.0, 0.0, 0.0)
 
 
@@ -72,17 +75,17 @@ def plot_consolidated_line_charts(
             for idx, p_stat in enumerate(projects_stats):
                 attr_name = _resolve_attr_name(dim)
                 timeline_profile = getattr(p_stat.metrics, attr_name, None)
-                
+
                 if timeline_profile and timeline_profile.windows:
                     has_data = True
                     years = sorted(timeline_profile.windows.keys())
-                    
+
                     vals = [timeline_profile.windows[y].val for y in years]
                     lows = [timeline_profile.windows[y].ci_low for y in years]
                     highs = [timeline_profile.windows[y].ci_high for y in years]
-                    
+
                     color = colors[idx % len(colors)]
-                    
+
                     # Core Point Estimation Line
                     ax.plot(
                         years,
@@ -91,16 +94,11 @@ def plot_consolidated_line_charts(
                         linewidth=2,
                         color=color,
                         label=p_stat.project_name,
-                        zorder=3
+                        zorder=3,
                     )
                     # Confidence Interval Ribbon Area
                     ax.fill_between(
-                        years,
-                        lows,
-                        highs,
-                        color=color,
-                        alpha=0.15,
-                        zorder=2
+                        years, lows, highs, color=color, alpha=0.15, zorder=2
                     )
 
             ax.set_title(
@@ -168,14 +166,16 @@ def plot_combined_heatmap(
             for j in range(len(dimensions)):
                 p_name = unique_projects[i]
                 dim_name = dimensions[j]
-                interval = _get_metric_data(project_map[p_name], dim_name, mode="pooled")
-                
+                interval = _get_metric_data(
+                    project_map[p_name], dim_name, mode="pooled"
+                )
+
                 # Render stacked strings explicitly showing limits inside matrices
                 upper_err = interval.ci_high - interval.val
                 lower_err = interval.val - interval.ci_low
 
                 cell_text = f"{interval.val:.2f}\n-{lower_err:.2f} / +{upper_err:.2f}"
-                
+
                 ax.text(
                     j,
                     i,
@@ -220,7 +220,9 @@ def plot_combined_parallel_coordinates(
         colors = plt.colormaps["Set1"](np.linspace(0, 1, len(projects_stats)))
 
         for idx, p_obj in enumerate(projects_stats):
-            vector = [_get_metric_data(p_obj, dim, mode="pooled").val for dim in dimensions]
+            vector = [
+                _get_metric_data(p_obj, dim, mode="pooled").val for dim in dimensions
+            ]
             ax.plot(
                 x_positions,
                 vector,
@@ -342,7 +344,9 @@ def plot_dimensions_correlation(
 
     for d_idx, dim in enumerate(dimensions):
         for p_idx, p_name in enumerate(unique_projects):
-            matrix_data[p_idx, d_idx] = _get_metric_data(project_map[p_name], dim, mode="pooled").val
+            matrix_data[p_idx, d_idx] = _get_metric_data(
+                project_map[p_name], dim, mode="pooled"
+            ).val
 
     std_deviations = np.std(matrix_data, axis=0)
     constant_mask = std_deviations == 0
@@ -438,7 +442,9 @@ def plot_governance_dendrogram(
 
     for d_idx, dim in enumerate(dimensions):
         for p_idx, p_name in enumerate(unique_projects):
-            matrix_data[p_idx, d_idx] = _get_metric_data(project_map[p_name], dim, mode="pooled").val
+            matrix_data[p_idx, d_idx] = _get_metric_data(
+                project_map[p_name], dim, mode="pooled"
+            ).val
 
     Z = linkage(matrix_data, method="ward")
 
@@ -519,7 +525,9 @@ def plot_projects_2d(
 
     for d_idx, dim in enumerate(dimensions):
         for p_idx, p_name in enumerate(unique_projects):
-            matrix_data[p_idx, d_idx] = _get_metric_data(project_map[p_name], dim, mode="pooled").val
+            matrix_data[p_idx, d_idx] = _get_metric_data(
+                project_map[p_name], dim, mode="pooled"
+            ).val
 
     mean_vec = np.mean(matrix_data, axis=0)
     centered_matrix = matrix_data - mean_vec
@@ -611,16 +619,26 @@ def show_governance_statistics(
 
     # In your revised governance_stats pipeline, get_governance_statistics returns project_records directly
     project_records = get_governance_statistics(projects)
-    
+
     # Static list mapping definition order to maintain deterministic processing loops
-    ordered_keys = ["Independence", "Pluralism", "Representation", "Decentralized Decision-Making", "Autonomous Participation"]
+    ordered_keys = [
+        "Independence",
+        "Pluralism",
+        "Representation",
+        "Decentralized Decision-Making",
+        "Autonomous Participation",
+    ]
     dimensions = _get_all_dimensions(project_records, ordered_keys)
 
     print("Executing visualization generation tasks over grouped structural records...")
 
-    plot_consolidated_line_charts(project_records, output_dir, dimensions, base_font_size)
+    plot_consolidated_line_charts(
+        project_records, output_dir, dimensions, base_font_size
+    )
     plot_combined_heatmap(project_records, output_dir, dimensions, base_font_size)
-    plot_combined_parallel_coordinates(project_records, output_dir, dimensions, base_font_size)
+    plot_combined_parallel_coordinates(
+        project_records, output_dir, dimensions, base_font_size
+    )
     plot_project_radars(project_records, output_dir, dimensions, base_font_size)
     plot_dimensions_correlation(project_records, output_dir, dimensions, base_font_size)
     plot_governance_dendrogram(project_records, output_dir, dimensions, base_font_size)
@@ -630,7 +648,8 @@ def show_governance_statistics(
     table_data = {"Governance Domain Framework Structure": dimensions}
     for p_record in project_records:
         table_data[p_record.project_name] = [
-            f"{_get_metric_data(p_record, dim, mode='pooled').val:.4f}" for dim in dimensions
+            f"{_get_metric_data(p_record, dim, mode='pooled').val:.4f}"
+            for dim in dimensions
         ]
 
     summary_df = pl.DataFrame(table_data)
@@ -646,4 +665,6 @@ def show_governance_statistics(
             str(summary_df), encoding="utf-8"
         )
 
-    print(f"Data calculations pipeline terminated successfully. Files written to: {output_dir}")
+    print(
+        f"Data calculations pipeline terminated successfully. Files written to: {output_dir}"
+    )
