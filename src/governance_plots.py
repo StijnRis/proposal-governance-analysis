@@ -1,53 +1,22 @@
 import textwrap
 from pathlib import Path
-from typing import Any, List
+from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
+import seaborn as sns
 from matplotlib.ticker import MaxNLocator
 from scipy.cluster.hierarchy import dendrogram, linkage
 
-from dataloader import IndividualProjectContext
-
 # Targets the updated dataclass layout
-from governance_stats import (
+from governance_calc import (
     GovernanceProjectStats,
-    MetricInterval,
-    get_governance_statistics,
 )
-
-
-def _resolve_attr_name(dim_str: str) -> str:
-    """Maps display strings or existing dict keys to the new dataclass attribute names."""
-    mapping = {
-        "Independence": "independence",
-        "Pluralism": "pluralism",
-        "Representation": "representation",
-        "Decentralized Decision-Making": "decentralization",
-        "Autonomous Participation": "autonomous_participation",
-    }
-    # Return string if it matches precisely or lower-fallback to guarantee match
-    return mapping.get(dim_str, dim_str.lower().replace(" ", "_").replace("-", "_"))
-
-
-def _get_metric_data(
-    p_stat: GovernanceProjectStats, dim: str, mode: str = "pooled", year: int = None
-) -> Any:
-    """Helper method to clean up object attribute extraction via dot-notation wrapper."""
-    attr_name = _resolve_attr_name(dim)
-
-    if mode == "pooled":
-        profile = getattr(p_stat.pooled_metrics, attr_name, None)
-        return profile if profile is not None else MetricInterval(0.0, 0.0, 0.0)
-
-    elif mode == "timeline":
-        timeline_profile = getattr(p_stat.metrics, attr_name, None)
-        if timeline_profile and year in timeline_profile.windows:
-            return timeline_profile.windows[year]
-        return MetricInterval(0.0, 0.0, 0.0)
-
-    return MetricInterval(0.0, 0.0, 0.0)
+from governance_stats import _get_metric_data, _resolve_attr_name, calculate_dimensions_correlation
+from scipy.cluster.hierarchy import cophenet
+from scipy.spatial.distance import pdist
 
 
 def _get_all_dimensions(
@@ -135,61 +104,83 @@ def plot_combined_heatmap(
     dimensions: List[str],
     base_font_size: int,
 ) -> None:
-    """Generates cross-project summary matrix maps detailing scores alongside bracketed bounds."""
+    """Generates cross-project summary maps letting Seaborn completely handle the styling, colors, and text contrast."""
     if not projects_stats or not dimensions:
         return
 
+    normal_text_size = base_font_size - 7
+
     output_dir.mkdir(parents=True, exist_ok=True)
     unique_projects = sorted([p.project_name for p in projects_stats])
-
-    matrix_data = np.zeros((len(unique_projects), len(dimensions)))
     project_map = {p.project_name: p for p in projects_stats}
+
+    # Build the DataFrames for values and custom text layers
+    matrix_data = np.zeros((len(unique_projects), len(dimensions)))
+
+    # Store CI values for our coordinate plotting step later
+    ci_bounds = {}
 
     for d_idx, dim in enumerate(dimensions):
         for p_idx, p_name in enumerate(unique_projects):
             interval = _get_metric_data(project_map[p_name], dim, mode="pooled")
             matrix_data[p_idx, d_idx] = interval.val
 
-    fig, ax = plt.subplots(figsize=(13, 8))
+            upper_err = interval.ci_high - interval.val
+            lower_err = interval.val - interval.ci_low
+            ci_bounds[(p_idx, d_idx)] = (lower_err, upper_err)
+
+    wrapped_labels = [textwrap.fill(dim, width=15) for dim in dimensions]
+    df_data = pd.DataFrame(matrix_data, index=unique_projects, columns=wrapped_labels)
+
+    fig, ax = plt.subplots(figsize=(11, 7))
     try:
-        im = ax.imshow(matrix_data, cmap="YlGnBu", aspect="auto", vmin=0.0, vmax=1.0)
-        wrapped_labels = [textwrap.fill(dim, width=15) for dim in dimensions]
-
-        ax.set_xticks(np.arange(len(dimensions)))
-        ax.set_yticks(np.arange(len(unique_projects)))
-        ax.set_xticklabels(
-            wrapped_labels, rotation=0, ha="center", fontsize=base_font_size - 3
+        # Step 1: Let Seaborn map the background colors and render the main text dead-center
+        sns.heatmap(
+            df_data,
+            annot=True,
+            fmt=".2f",
+            vmin=0.0,
+            vmax=1.0,
+            ax=ax,
+            annot_kws={"fontsize": normal_text_size, "fontweight": "bold"},
+            cbar_kws={"label": "Index over 5 years (with 95% CI)"},
         )
-        ax.set_yticklabels(unique_projects, fontsize=base_font_size - 2)
 
+        # Step 2: Extract text objects from Seaborn to find the auto-calculated text color
+        # This keeps the styling automatic even if we manually draw the CIs below them
+        text_objects = [t for t in ax.texts]
+
+        text_idx = 0
         for i in range(len(unique_projects)):
             for j in range(len(dimensions)):
-                p_name = unique_projects[i]
-                dim_name = dimensions[j]
-                interval = _get_metric_data(
-                    project_map[p_name], dim_name, mode="pooled"
-                )
+                # Snatch the color Seaborn picked for this specific grid coordinate
+                native_color = text_objects[text_idx].get_color()
+                text_idx += 1
 
-                # Render stacked strings explicitly showing limits inside matrices
-                upper_err = interval.ci_high - interval.val
-                lower_err = interval.val - interval.ci_low
+                lower_err, upper_err = ci_bounds[(i, j)]
+                ci_text = f"-{lower_err:.2f} / +{upper_err:.2f}"
 
-                cell_text = f"{interval.val:.2f}\n-{lower_err:.2f} / +{upper_err:.2f}"
-
+                # Step 3: Draw the smaller CI layer directly below the center point
                 ax.text(
-                    j,
-                    i,
-                    cell_text,
+                    j + 0.5,  # Centered horizontally
+                    i + 0.78,  # Dropped down past the core number
+                    ci_text,
                     ha="center",
                     va="center",
-                    color="black" if interval.val < 0.7 else "white",
-                    fontweight="bold",
-                    fontsize=base_font_size - 5,
+                    color=native_color,  # Inherits contrast automatically
+                    fontweight="normal",
+                    fontsize=base_font_size - 12,
                 )
 
-        cbar = fig.colorbar(im, ax=ax)
-        cbar.set_label("Index over 5 years (with 95% CI)", size=base_font_size - 2)
-        cbar.ax.tick_params(labelsize=base_font_size - 3)
+        # Labels formatting
+        ax.set_xticklabels(
+            wrapped_labels, rotation=0, ha="center", fontsize=normal_text_size
+        )
+        ax.set_yticklabels(unique_projects, rotation=0, fontsize=normal_text_size)
+
+        cbar = ax.collections[0].colorbar
+        cbar.ax.yaxis.label.set_size(normal_text_size)
+        cbar.ax.tick_params(labelsize=normal_text_size)
 
         ax.set_title(
             "Governance Dimensions Heatmap (5-Year Pooled Matrix)",
@@ -197,8 +188,12 @@ def plot_combined_heatmap(
             fontweight="bold",
             pad=20,
         )
+
         plt.tight_layout()
-        plt.savefig(output_dir / "combined_grouped_heatmap.svg", bbox_inches="tight")
+
+        output_file = output_dir / "combined_grouped_heatmap.svg"
+        plt.savefig(output_file, bbox_inches="tight")
+        print(f"Heatmap successfully rendered and saved to: {output_file}")
     finally:
         plt.close(fig)
 
@@ -327,101 +322,129 @@ def plot_project_radars(
 
 
 def plot_dimensions_correlation(
-    projects_stats: List[GovernanceProjectStats],
+    projects_stats: List["GovernanceProjectStats"],
     output_dir: Path,
     dimensions: List[str],
     base_font_size: int,
 ) -> None:
-    """Extracts pooled metrics matrix, computes safe correlations, and saves outputs."""
+    """Calculates correlations and renders visual matrices accompanied by markdown logs."""
     if len(dimensions) < 2 or not projects_stats:
         return
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    unique_projects = sorted([p.project_name for p in projects_stats])
+    normal_text_size = base_font_size - 3
 
-    matrix_data = np.zeros((len(unique_projects), len(dimensions)))
-    project_map = {p.project_name: p for p in projects_stats}
+    # Step 1: Run the calculation engine
+    correlation_data = calculate_dimensions_correlation(projects_stats, dimensions)
+    if not correlation_data:
+        return
 
-    for d_idx, dim in enumerate(dimensions):
-        for p_idx, p_name in enumerate(unique_projects):
-            matrix_data[p_idx, d_idx] = _get_metric_data(
-                project_map[p_name], dim, mode="pooled"
-            ).val
+    # Labels and layout configurations
+    wrapped_labels = [textwrap.fill(dim, width=15) for dim in dimensions]
+    mask = np.triu(np.ones((len(dimensions), len(dimensions)), dtype=bool), k=0)
 
-    std_deviations = np.std(matrix_data, axis=0)
-    constant_mask = std_deviations == 0
+    labels_map = {
+        "pearson": "Pearson Correlation Coefficient",
+        "spearman": "Spearman Rank Correlation",
+    }
 
-    min_vals = matrix_data.min(axis=0)
-    max_vals = matrix_data.max(axis=0)
-    range_vals = max_vals - min_vals
-    range_vals[constant_mask] = 1.0
-    normalized_matrix = (matrix_data - min_vals) / range_vals
+    for method, payload in correlation_data.items():
+        corr_df = payload["corr_df"]
+        ci_bounds = payload["ci_bounds"]
+        corr_matrix = corr_df.values
+        cbar_label = labels_map[method]
 
-    corr_matrix = np.corrcoef(normalized_matrix, rowvar=False)
+        # Rename columns/index for clean plotting display
+        df_plot = corr_df.copy()
+        df_plot.columns = wrapped_labels
+        df_plot.index = wrapped_labels
 
-    if np.isnan(corr_matrix).any():
-        corr_matrix = np.nan_to_num(corr_matrix, nan=0.0)
-        for idx, is_constant in enumerate(constant_mask):
-            if is_constant:
-                corr_matrix[idx, :] = 0.0
-                corr_matrix[:, idx] = 0.0
-                corr_matrix[idx, idx] = 1.0
+        # --- Visual Heatmap Generation ---
+        fig, ax = plt.subplots(figsize=(10, 8))
 
-    fig, ax = plt.subplots(figsize=(10, 8))
-    try:
-        im = ax.imshow(corr_matrix, cmap="RdBu", aspect="auto", vmin=-1.0, vmax=1.0)
-        wrapped_labels = [textwrap.fill(dim, width=15) for dim in dimensions]
-
-        ax.set_xticks(np.arange(len(dimensions)))
-        ax.set_yticks(np.arange(len(dimensions)))
-        ax.set_xticklabels(
-            wrapped_labels, rotation=45, ha="right", fontsize=base_font_size - 3
+        sns.heatmap(
+            df_plot,
+            mask=mask,
+            cmap="coolwarm",
+            vmax=1.0,
+            vmin=-1.0,
+            center=0,
+            annot=True,
+            fmt=".2f",
+            annot_kws={"fontsize": normal_text_size, "fontweight": "bold"},
+            cbar_kws={"label": f"{cbar_label} (with 95% CI)", "shrink": 0.8},
+            ax=ax,
         )
-        ax.set_yticklabels(wrapped_labels, fontsize=base_font_size - 3)
 
+        # Snatch Seaborn's text elements to dynamically clone auto-contrasting colors
+        text_objects = [t for t in ax.texts]
+
+        text_idx = 0
         for i in range(len(dimensions)):
             for j in range(len(dimensions)):
-                val = corr_matrix[i, j]
-                ax.text(
-                    j,
-                    i,
-                    f"{val:.2f}",
-                    ha="center",
-                    va="center",
-                    color="black" if abs(val) < 0.5 else "white",
-                    fontweight="bold",
-                    fontsize=base_font_size - 3,
-                )
+                # If it's masked or on the diagonal, Seaborn skips drawing text,
+                # so we only track active text fields in the lower triangle
+                if i > j:
+                    native_color = text_objects[text_idx].get_color()
+                    text_idx += 1
 
-        cbar = fig.colorbar(im, ax=ax)
-        cbar.set_label("Pearson Correlation Coefficient", size=base_font_size - 2)
-        cbar.ax.tick_params(labelsize=base_font_size - 3)
+                    lower_err, upper_err = ci_bounds[(i, j)]
+                    ci_text = f"-{lower_err:.2f} / +{upper_err:.2f}"
+
+                    # Write the smaller CI adjustment string under the main value text layer
+                    ax.text(
+                        j + 0.5,
+                        i + 0.76,
+                        ci_text,
+                        ha="center",
+                        va="center",
+                        color=native_color,
+                        fontweight="normal",
+                        fontsize=base_font_size - 10,
+                    )
+
+        # Style labels and axes dynamically mapping text sizes
+        ax.set_xticklabels(
+            wrapped_labels, rotation=45, ha="right", fontsize=normal_text_size
+        )
+        ax.set_yticklabels(wrapped_labels, rotation=0, fontsize=normal_text_size)
+
+        cbar = ax.collections[0].colorbar
+        cbar.ax.yaxis.label.set_size(base_font_size - 2)
+        cbar.ax.tick_params(labelsize=normal_text_size)
 
         ax.set_title(
-            "Governance Dimensions Correlation Matrix",
+            f"Governance Dimensions Matrix ({method.capitalize()})",
             fontsize=base_font_size + 1,
             fontweight="bold",
             pad=20,
         )
+
         plt.tight_layout()
-        plt.savefig(
-            output_dir / "dimensions_correlation_matrix.svg", bbox_inches="tight"
-        )
-    finally:
+        plt.savefig(output_dir / f"dimensions_{method}_matrix.svg", bbox_inches="tight")
         plt.close(fig)
 
-    markdown_path = output_dir / "dimensions_correlation_matrix.md"
-    md_lines = ["# Governance Framework Dimensions Correlation Matrix\n"]
-    md_lines.append("| Dimension | " + " | ".join(dimensions) + " |")
-    md_lines.append("| :--- | " + " | ".join([":---:"] * len(dimensions)) + " |")
-
-    for i, dim_row in enumerate(dimensions):
-        row_cells = [dim_row] + [
-            f"{corr_matrix[i, j]:.2f}" for j in range(len(dimensions))
+        # --- Markdown Table Generation ---
+        markdown_path = output_dir / f"dimensions_{method}_matrix.md"
+        md_lines = [
+            f"# Governance Framework Dimensions Matrix ({method.capitalize()})\n",
+            "> Values shown as: **Correlation Coefficient [-Lower CI / +Upper CI]**\n",
+            "| Dimension | " + " | ".join(dimensions) + " |",
+            "| :--- | " + " | ".join([":---:"] * len(dimensions)) + " |",
         ]
-        md_lines.append("| " + " | ".join(row_cells) + " |")
 
-    markdown_path.write_text("\n".join(md_lines), encoding="utf-8")
+        for i, dim_row in enumerate(dimensions):
+            cells = [dim_row]
+            for j in range(len(dimensions)):
+                if i > j:
+                    r = corr_matrix[i, j]
+                    l_err, u_err = ci_bounds[(i, j)]
+                    cells.append(f"{r:.2f} [-{l_err:.2f}/+{u_err:.2f}]")
+                else:
+                    cells.append("")
+            md_lines.append("| " + " | ".join(cells) + " |")
+
+        markdown_path.write_text("\n".join(md_lines), encoding="utf-8")
 
 
 def plot_governance_dendrogram(
@@ -447,6 +470,15 @@ def plot_governance_dendrogram(
             ).val
 
     Z = linkage(matrix_data, method="ward")
+
+    # 1. Calculate original pairwise distances (defaults to Euclidean)
+    orign_distances = pdist(matrix_data)
+
+    # 2. Calculate the cophenetic correlation coefficient
+    coph_corr, coph_dists = cophenet(Z, orign_distances)
+
+    with open(output_dir / "governance_hierarchy_dendrogram_cophenetic.txt", "w") as f:
+        f.write(f"Cophenetic Correlation Coefficient: {coph_corr:.4f}\n")
 
     fig, ax = plt.subplots(figsize=(10, 6))
     try:
@@ -609,16 +641,13 @@ def plot_projects_2d(
         plt.close(fig)
 
 
-def show_governance_statistics(
-    projects: List[IndividualProjectContext],
+def show_governance_in_plots(
+    project_governance_stats: List[GovernanceProjectStats],
     output_dir: Path,
     base_font_size: int = 21,
 ) -> None:
     """Calculates flat trend lines and robust multi-year pooled profiles over all data assets."""
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    # In your revised governance_stats pipeline, get_governance_statistics returns project_records directly
-    project_records = get_governance_statistics(projects)
 
     # Static list mapping definition order to maintain deterministic processing loops
     ordered_keys = [
@@ -628,25 +657,34 @@ def show_governance_statistics(
         "Decentralized Decision-Making",
         "Autonomous Participation",
     ]
-    dimensions = _get_all_dimensions(project_records, ordered_keys)
+
+    dimensions = _get_all_dimensions(project_governance_stats, ordered_keys)
 
     print("Executing visualization generation tasks over grouped structural records...")
 
     plot_consolidated_line_charts(
-        project_records, output_dir, dimensions, base_font_size
+        project_governance_stats, output_dir, dimensions, base_font_size
     )
-    plot_combined_heatmap(project_records, output_dir, dimensions, base_font_size)
+    plot_combined_heatmap(
+        project_governance_stats, output_dir, dimensions, base_font_size
+    )
     plot_combined_parallel_coordinates(
-        project_records, output_dir, dimensions, base_font_size
+        project_governance_stats, output_dir, dimensions, base_font_size
     )
-    plot_project_radars(project_records, output_dir, dimensions, base_font_size)
-    plot_dimensions_correlation(project_records, output_dir, dimensions, base_font_size)
-    plot_governance_dendrogram(project_records, output_dir, dimensions, base_font_size)
-    plot_projects_2d(project_records, output_dir, dimensions, base_font_size)
+    plot_project_radars(
+        project_governance_stats, output_dir, dimensions, base_font_size
+    )
+    plot_dimensions_correlation(
+        project_governance_stats, output_dir, dimensions, base_font_size
+    )
+    plot_governance_dendrogram(
+        project_governance_stats, output_dir, dimensions, base_font_size
+    )
+    plot_projects_2d(project_governance_stats, output_dir, dimensions, base_font_size)
 
     # Output Tables Summary Generation formatting point values cleanly
     table_data = {"Governance Domain Framework Structure": dimensions}
-    for p_record in project_records:
+    for p_record in project_governance_stats:
         table_data[p_record.project_name] = [
             f"{_get_metric_data(p_record, dim, mode='pooled').val:.4f}"
             for dim in dimensions

@@ -5,7 +5,7 @@ import polars as pl
 import pytest
 
 # Import your code here. Assuming your code is in a module named 'governance_stats'
-from governance_stats import (
+from governance_calc import (
     GovernanceProjectStats,
     MetricInterval,
     _bootstrap_interval,
