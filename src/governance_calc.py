@@ -35,6 +35,7 @@ class ProjectMetricsProfile:
     """Groups all 5 distinct metric timelines to prevent arbitrary string dictionary lookups."""
 
     independence: MetricTimeline = field(default_factory=MetricTimeline)
+    independence_no_discard: MetricTimeline = field(default_factory=MetricTimeline)
     pluralism: MetricTimeline = field(default_factory=MetricTimeline)
     representation: MetricTimeline = field(default_factory=MetricTimeline)
     decentralization: MetricTimeline = field(default_factory=MetricTimeline)
@@ -46,6 +47,9 @@ class ProjectPooledProfile:
     """Groups the multi-year pooled summary metric intervals."""
 
     independence: MetricInterval = field(
+        default_factory=lambda: MetricInterval(0.0, 0.0, 0.0)
+    )
+    independence_no_discard: MetricInterval = field(
         default_factory=lambda: MetricInterval(0.0, 0.0, 0.0)
     )
     pluralism: MetricInterval = field(
@@ -138,8 +142,24 @@ def _bootstrap_interval(
 # =====================================================================
 
 
+def compute_independence_hhi_do_no_discard_and_no_bootstrapping(
+    ctx: IndividualProjectContext,
+    window_size: int,
+    mode: str,
+    n_bootstraps: int,
+) -> Union[Dict[str, float], Dict[int, Dict[str, float]]]:
+    """Computes Inverse HHI with 95% Bootstrap Confidence Intervals without discarding unaffiliated authors."""
+    return compute_independence_hhi(
+        ctx, window_size, mode, 1, discard_unaffiliated=False
+    )
+
+
 def compute_independence_hhi(
-    ctx: IndividualProjectContext, window_size: int, mode: str, n_bootstraps: int
+    ctx: IndividualProjectContext,
+    window_size: int,
+    mode: str,
+    n_bootstraps: int,
+    discard_unaffiliated: bool = True,
 ) -> Union[Dict[str, float], Dict[int, Dict[str, float]]]:
     """Computes Inverse HHI with 95% Bootstrap Confidence Intervals."""
     proposal_counts = (
@@ -175,6 +195,7 @@ def compute_independence_hhi(
             {"val": 0.0, "ci_low": 0.0, "ci_high": 0.0} if mode == "most_recent" else {}
         )
 
+    # Base stream setup
     author_metrics_stream = (
         all_years_authors.join(proposal_counts, on=["year", "author_id"], how="left")
         .join(comment_counts, on=["year", "author_id"], how="left")
@@ -186,8 +207,20 @@ def compute_independence_hhi(
             how="left",
         )
         .join(ctx.organisations, on="organisation_id", how="left")
-        .select(["year", "author_id", "organisation_name", "w_a"])
     )
+
+    # Process affiliation logic based on the boolean flag
+    if discard_unaffiliated:
+        author_metrics_stream = author_metrics_stream.filter(
+            pl.col("organisation_name").is_not_null()
+        ).select(["year", "author_id", "organisation_name", "w_a"])
+    else:
+        author_metrics_stream = author_metrics_stream.with_columns(
+            pl.when(pl.col("organisation_name").is_null())
+            .then(pl.lit("independent_") + pl.col("author_id").cast(pl.Utf8))
+            .otherwise(pl.col("organisation_name"))
+            .alias("organisation_name")
+        ).select(["year", "author_id", "organisation_name", "w_a"])
 
     def _score_fn(sliced_df: pl.DataFrame) -> float:
         valid_affiliations = sliced_df.filter(pl.col("organisation_name").is_not_null())
@@ -203,7 +236,10 @@ def compute_independence_hhi(
 
     def _calculate_core_hhi(sliced_df: pl.DataFrame) -> Dict[str, float]:
         return _bootstrap_interval(
-            sliced_df, _score_fn, cluster_col="author_id", n_bootstraps=n_bootstraps
+            sliced_df,
+            _score_fn,
+            cluster_col="author_id",
+            n_bootstraps=n_bootstraps,
         )
 
     max_year = author_metrics_stream.select(pl.col("year").max()).item()
@@ -571,6 +607,10 @@ def get_governance_statistics(
     # Mapping registry to link domains to their engine and target structural attributes
     computation_registry = {
         "independence": (compute_independence_hhi, "independence"),
+        "independence_no_discard": (
+            compute_independence_hhi_do_no_discard_and_no_bootstrapping,
+            "independence_no_discard",
+        ),
         "pluralism": (compute_pluralism_author_gini, "pluralism"),
         "representation": (compute_representation_comment_gini, "representation"),
         "decentralization": (compute_centralization_metrics, "decentralization"),

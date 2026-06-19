@@ -20,6 +20,7 @@ def main() -> None:
     """Load data, compute statistics, and generate visualizations."""
     print("Starting proposal governance analysis...")
     load_dotenv()
+    BASE_FONT_SIZE = 21
 
     # Setup core operational path markers
     data_dir = Path("data/proposals")
@@ -68,7 +69,7 @@ def main() -> None:
     show_basic_statistics(projects, output_dir)
 
     project_governance_stats = get_governance_statistics(projects)
-    show_governance_in_plots(project_governance_stats, output_dir)
+    show_governance_in_plots(project_governance_stats, output_dir, BASE_FONT_SIZE)
     save_governance_statistics(project_governance_stats, output_dir)
 
 

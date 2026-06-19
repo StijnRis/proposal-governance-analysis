@@ -1,7 +1,9 @@
 import json
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Literal, Tuple
 
+import numpy as np
 import pandas as pd
 from scipy import stats
 
@@ -86,26 +88,27 @@ def save_governance_statistics(
     print(f"Governance statistics saved to {output_file}")
 
 
+@dataclass(frozen=True)
+class CorrelationMethodResult:
+    corr_df: pd.DataFrame
+    ci_bounds: Dict[Tuple[int, int], Tuple[float, float]]
+
+
+CorrelationResults = Dict[Literal["pearson", "spearman"], CorrelationMethodResult]
+
+
 def calculate_dimensions_correlation(
     projects_stats: List["GovernanceProjectStats"],
     dimensions: List[str],
-    n_resamples: int = 2000,
-) -> Dict[str, dict]:
-    """Computes correlation matrices and their bootstrapped 95% confidence intervals.
+) -> CorrelationResults:
+    """Computes correlation matrices and analytical 95% confidence intervals
 
-    Returns:
-        A dictionary mapping method ('pearson', 'spearman') to its results:
-        {
-            "method_name": {
-                "corr_df": pd.DataFrame,
-                "ci_bounds": Dict[Tuple[int, int], Tuple[float, float]]  # (i, j) -> (lower_err, upper_err)
-            }
-        }
+    expressed as relative errors, optimized for small sample sizes (N=10).
     """
-    if len(dimensions) < 2 or not projects_stats:
+    n_samples = len(projects_stats)
+    if len(dimensions) < 2 or n_samples < 4:
         return {}
 
-    # Structure raw data into a Pandas DataFrame
     df = pd.DataFrame(
         {
             dim: [_get_metric_data(p, dim, mode="pooled").val for p in projects_stats]
@@ -113,53 +116,52 @@ def calculate_dimensions_correlation(
         }
     ).fillna(0.0)
 
-    results = {}
-    methods = ["pearson", "spearman"]
+    results: CorrelationResults = {}
+    methods: List[Literal["pearson", "spearman"]] = ["pearson", "spearman"]
 
     for method in methods:
         corr_df = df.corr(method=method).fillna(0.0)
         corr_matrix = corr_df.values
-        ci_bounds = {}
+        ci_bounds: Dict[Tuple[int, int], Tuple[float, float]] = {}
 
-        # Helper metric function for the bootstrap process
-        def _corr_metric(x, y):
-            if method == "pearson":
-                return stats.pearsonr(x, y)[0]
-            else:
-                return stats.spearmanr(x, y)[0]
-
-        # Calculate CIs for the lower triangle
         for i, dim_row in enumerate(dimensions):
             for j, dim_col in enumerate(dimensions):
-                if i > j:  # Lower triangle only
-                    x_data = df[dim_row].values
-                    y_data = df[dim_col].values
+                if i > j:
+                    r_val = corr_matrix[i, j]
+
+                    # Clamp to avoid math domain errors in arctanh
+                    r_clamped = max(min(r_val, 0.9999), -0.9999)
 
                     try:
-                        res = stats.bootstrap(
-                            (x_data, y_data),
-                            _corr_metric,
-                            vectorized=False,
-                            paired=True,
-                            n_resamples=n_resamples,
-                            method="BCa",
-                            random_state=42,
-                        )
-                        ci_low = res.confidence_interval.low
-                        ci_high = res.confidence_interval.high
+                        # 1. Fisher Z-Transformation
+                        z_stat = np.arctanh(r_clamped)
 
-                        # Convert absolute CI bounds to relative error values around the core estimate
-                        r_val = corr_matrix[i, j]
+                        # 2. Standard Error (with Spearman correction factor)
+                        se_modifier = 1.06 if method == "spearman" else 1.0
+                        se = se_modifier / np.sqrt(n_samples - 3)
+
+                        # 3. Critical Value using Student's t-distribution
+                        t_crit = stats.t.ppf(1 - 0.05 / 2, df=n_samples - 2)
+
+                        # Calculate absolute bounds in Z-space
+                        z_low = z_stat - (t_crit * se)
+                        z_high = z_stat + (t_crit * se)
+
+                        # 4. Transform back to original r-space
+                        ci_low = float(np.tanh(z_low))
+                        ci_high = float(np.tanh(z_high))
+
+                        # 5. Convert to relative error distances for your plotting script
                         lower_err = max(0.0, r_val - ci_low)
                         upper_err = max(0.0, ci_high - r_val)
+
                         ci_bounds[(i, j)] = (lower_err, upper_err)
 
                     except Exception:
                         ci_bounds[(i, j)] = (0.0, 0.0)
                 else:
-                    # Identity diagonal or upper triangle (masked visually anyway)
                     ci_bounds[(i, j)] = (0.0, 0.0)
 
-        results[method] = {"corr_df": corr_df, "ci_bounds": ci_bounds}
+        results[method] = CorrelationMethodResult(corr_df=corr_df, ci_bounds=ci_bounds)
 
     return results

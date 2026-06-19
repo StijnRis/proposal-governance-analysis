@@ -8,23 +8,19 @@ import pandas as pd
 import polars as pl
 import seaborn as sns
 from matplotlib.ticker import MaxNLocator
-from scipy.cluster.hierarchy import dendrogram, linkage
+from scipy.cluster.hierarchy import cophenet, dendrogram, linkage
+from scipy.spatial.distance import pdist
 
 # Targets the updated dataclass layout
 from governance_calc import (
     GovernanceProjectStats,
 )
-from governance_stats import _get_metric_data, _resolve_attr_name, calculate_dimensions_correlation
-from scipy.cluster.hierarchy import cophenet
-from scipy.spatial.distance import pdist
-
-
-def _get_all_dimensions(
-    projects_stats: List[GovernanceProjectStats], ordered_keys: List[str]
-) -> List[str]:
-    """Extracts unique governance dimension names safely matching the profile definitions."""
-    # Maps internal structures to confirm presence
-    return [dim for dim in ordered_keys]
+from governance_stats import (
+    CorrelationResults,
+    _get_metric_data,
+    _resolve_attr_name,
+    calculate_dimensions_correlation,
+)
 
 
 def plot_consolidated_line_charts(
@@ -334,8 +330,10 @@ def plot_dimensions_correlation(
     output_dir.mkdir(parents=True, exist_ok=True)
     normal_text_size = base_font_size - 3
 
-    # Step 1: Run the calculation engine
-    correlation_data = calculate_dimensions_correlation(projects_stats, dimensions)
+    # Step 1: Run the calculation engine (now returning our strongly-typed dict)
+    correlation_data: CorrelationResults = calculate_dimensions_correlation(
+        projects_stats, dimensions
+    )
     if not correlation_data:
         return
 
@@ -349,8 +347,9 @@ def plot_dimensions_correlation(
     }
 
     for method, payload in correlation_data.items():
-        corr_df = payload["corr_df"]
-        ci_bounds = payload["ci_bounds"]
+        # Clean attribute access replacing legacy dict string lookups
+        corr_df = payload.corr_df
+        ci_bounds = payload.ci_bounds
         corr_matrix = corr_df.values
         cbar_label = labels_map[method]
 
@@ -414,7 +413,7 @@ def plot_dimensions_correlation(
         cbar.ax.tick_params(labelsize=normal_text_size)
 
         ax.set_title(
-            f"Governance Dimensions Matrix ({method.capitalize()})",
+            "Governance Dimensions Correlation",
             fontsize=base_font_size + 1,
             fontweight="bold",
             pad=20,
@@ -427,7 +426,8 @@ def plot_dimensions_correlation(
         # --- Markdown Table Generation ---
         markdown_path = output_dir / f"dimensions_{method}_matrix.md"
         md_lines = [
-            f"# Governance Framework Dimensions Matrix ({method.capitalize()})\n",
+            "# Governance Dimensions Correlation\n",
+            f"Type: {method.capitalize()}\n",
             "> Values shown as: **Correlation Coefficient [-Lower CI / +Upper CI]**\n",
             "| Dimension | " + " | ".join(dimensions) + " |",
             "| :--- | " + " | ".join([":---:"] * len(dimensions)) + " |",
@@ -641,24 +641,44 @@ def plot_projects_2d(
         plt.close(fig)
 
 
+def show_independence_with_and_without_discard(
+    project_governance_stats: List[GovernanceProjectStats],
+    output_dir: Path,
+    base_font_size: int,
+) -> None:
+    path = output_dir / "independence_comparison.md"
+    lines = [
+        "# Independence Metric Comparison: With vs. Without Unaffiliated Discarding\n",
+        "This report compares the Independence metric calculated with the standard approach (discarding unaffiliated authors) against a modified approach that retains all authors regardless of affiliation status.\n",
+        "| Project Name | Independence (Discarding Unaffiliated) | Independence (No Discarding) | Difference |\n",
+        "| :--- | :---: | :---: | :---: |\n",
+    ]
+    for p_stat in project_governance_stats:
+        ind_disc = p_stat.pooled_metrics.independence.val
+        ind_no_disc = p_stat.pooled_metrics.independence_no_discard.val
+        diff = ind_no_disc - ind_disc
+        lines.append(
+            f"| {p_stat.project_name} | {ind_disc:.4f} | {ind_no_disc:.4f} | {diff:.4f} |\n"
+        )
+    path.write_text("".join(lines), encoding="utf-8")
+
+
 def show_governance_in_plots(
     project_governance_stats: List[GovernanceProjectStats],
     output_dir: Path,
-    base_font_size: int = 21,
+    base_font_size: int,
 ) -> None:
     """Calculates flat trend lines and robust multi-year pooled profiles over all data assets."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Static list mapping definition order to maintain deterministic processing loops
-    ordered_keys = [
+    dimensions = [
         "Independence",
         "Pluralism",
         "Representation",
         "Decentralized Decision-Making",
         "Autonomous Participation",
     ]
-
-    dimensions = _get_all_dimensions(project_governance_stats, ordered_keys)
 
     print("Executing visualization generation tasks over grouped structural records...")
 
@@ -681,6 +701,9 @@ def show_governance_in_plots(
         project_governance_stats, output_dir, dimensions, base_font_size
     )
     plot_projects_2d(project_governance_stats, output_dir, dimensions, base_font_size)
+    show_independence_with_and_without_discard(
+        project_governance_stats, output_dir, base_font_size
+    )
 
     # Output Tables Summary Generation formatting point values cleanly
     table_data = {"Governance Domain Framework Structure": dimensions}
