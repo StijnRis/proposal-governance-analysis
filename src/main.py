@@ -10,7 +10,7 @@ from enhance_data.add_companies import enrich_project_contexts_with_companies
 from enhance_data.merge_companies import merge_duplicate_companies_in_contexts
 from enhance_data.merge_people import merge_duplicate_people
 from governance_calc import get_governance_statistics
-from governance_plots import show_governance_in_plots
+from governance_plots import FontSizeConfig, show_governance_in_plots
 from governance_stats import save_governance_statistics
 from health_check import diagnose_all_projects, save_combined_report
 from statistics2 import generate_table_counts, show_basic_statistics
@@ -20,7 +20,7 @@ def main() -> None:
     """Load data, compute statistics, and generate visualizations."""
     print("Starting proposal governance analysis...")
     load_dotenv()
-    BASE_FONT_SIZE = 21
+    BASE_FONT_SIZE = FontSizeConfig()
 
     # Setup core operational path markers
     data_dir = Path("data/proposals")

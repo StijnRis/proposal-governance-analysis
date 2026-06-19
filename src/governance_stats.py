@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Literal, Tuple
 
 import numpy as np
 import pandas as pd
+import scipy.stats as stats
 from scipy import stats
 
 from governance_calc import GovernanceProjectStats, MetricInterval
@@ -81,7 +82,7 @@ def save_governance_statistics(
     correlation_results = calculate_age_vs_autonomy_correlation(project_data)
 
     # Save the correlation results to a JSON file
-    output_file = output_dir / "governance_statistics.json"
+    output_file = output_dir / "age_vs_autonomy_statistics.json"
     with open(output_file, "w") as f:
         json.dump(correlation_results, f, indent=4)
 
@@ -91,6 +92,7 @@ def save_governance_statistics(
 @dataclass(frozen=True)
 class CorrelationMethodResult:
     corr_df: pd.DataFrame
+    p_values_df: pd.DataFrame
     ci_bounds: Dict[Tuple[int, int], Tuple[float, float]]
 
 
@@ -101,7 +103,7 @@ def calculate_dimensions_correlation(
     projects_stats: List["GovernanceProjectStats"],
     dimensions: List[str],
 ) -> CorrelationResults:
-    """Computes correlation matrices and analytical 95% confidence intervals
+    """Computes correlation matrices, p-values, and analytical 95% confidence intervals
 
     expressed as relative errors, optimized for small sample sizes (N=10).
     """
@@ -109,6 +111,7 @@ def calculate_dimensions_correlation(
     if len(dimensions) < 2 or n_samples < 4:
         return {}
 
+    # Extract data into DataFrame
     df = pd.DataFrame(
         {
             dim: [_get_metric_data(p, dim, mode="pooled").val for p in projects_stats]
@@ -120,18 +123,39 @@ def calculate_dimensions_correlation(
     methods: List[Literal["pearson", "spearman"]] = ["pearson", "spearman"]
 
     for method in methods:
-        corr_df = df.corr(method=method).fillna(0.0)
-        corr_matrix = corr_df.values
+        # Initialize empty matrices for correlations and p-values
+        num_dims = len(dimensions)
+        corr_matrix = np.eye(num_dims)
+        p_matrix = np.zeros((num_dims, num_dims))
         ci_bounds: Dict[Tuple[int, int], Tuple[float, float]] = {}
 
+        # Calculate pairwise metrics
         for i, dim_row in enumerate(dimensions):
             for j, dim_col in enumerate(dimensions):
+                if i == j:
+                    ci_bounds[(i, j)] = (0.0, 0.0)
+                    continue
+
+                x = df[dim_row].values
+                y = df[dim_col].values
+
+                # Calculate correlation coefficient and p-value
+                try:
+                    if method == "pearson":
+                        r_val, p_val = stats.pearsonr(x, y)
+                    else:  # spearman
+                        # scipy automatically handles small-sample approximations
+                        res = stats.spearmanr(x, y)
+                        r_val, p_val = res.statistic, res.pvalue
+                except Exception:
+                    r_val, p_val = 0.0, 1.0
+
+                corr_matrix[i, j] = r_val
+                p_matrix[i, j] = p_val
+
+                # Calculate Confidence Intervals for lower triangle to match original logic
                 if i > j:
-                    r_val = corr_matrix[i, j]
-
-                    # Clamp to avoid math domain errors in arctanh
                     r_clamped = max(min(r_val, 0.9999), -0.9999)
-
                     try:
                         # 1. Fisher Z-Transformation
                         z_stat = np.arctanh(r_clamped)
@@ -156,12 +180,19 @@ def calculate_dimensions_correlation(
                         upper_err = max(0.0, ci_high - r_val)
 
                         ci_bounds[(i, j)] = (lower_err, upper_err)
-
                     except Exception:
                         ci_bounds[(i, j)] = (0.0, 0.0)
                 else:
-                    ci_bounds[(i, j)] = (0.0, 0.0)
+                    # Maintain structural integrity for upper triangle mapping if needed
+                    if i < j:
+                        ci_bounds[(i, j)] = (0.0, 0.0)
 
-        results[method] = CorrelationMethodResult(corr_df=corr_df, ci_bounds=ci_bounds)
+        # Convert matrices back to organized DataFrames
+        corr_df = pd.DataFrame(corr_matrix, index=dimensions, columns=dimensions)
+        p_values_df = pd.DataFrame(p_matrix, index=dimensions, columns=dimensions)
+
+        results[method] = CorrelationMethodResult(
+            corr_df=corr_df, p_values_df=p_values_df, ci_bounds=ci_bounds
+        )
 
     return results

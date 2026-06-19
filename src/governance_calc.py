@@ -35,7 +35,8 @@ class ProjectMetricsProfile:
     """Groups all 5 distinct metric timelines to prevent arbitrary string dictionary lookups."""
 
     independence: MetricTimeline = field(default_factory=MetricTimeline)
-    independence_no_discard: MetricTimeline = field(default_factory=MetricTimeline)
+    independence_no_discard_all_unique: MetricTimeline = field(default_factory=MetricTimeline)
+    independence_no_discard_all_same: MetricTimeline = field(default_factory=MetricTimeline)
     pluralism: MetricTimeline = field(default_factory=MetricTimeline)
     representation: MetricTimeline = field(default_factory=MetricTimeline)
     decentralization: MetricTimeline = field(default_factory=MetricTimeline)
@@ -49,7 +50,10 @@ class ProjectPooledProfile:
     independence: MetricInterval = field(
         default_factory=lambda: MetricInterval(0.0, 0.0, 0.0)
     )
-    independence_no_discard: MetricInterval = field(
+    independence_no_discard_all_unique: MetricInterval = field(
+        default_factory=lambda: MetricInterval(0.0, 0.0, 0.0)
+    )
+    independence_no_discard_all_same: MetricInterval = field(
         default_factory=lambda: MetricInterval(0.0, 0.0, 0.0)
     )
     pluralism: MetricInterval = field(
@@ -142,15 +146,29 @@ def _bootstrap_interval(
 # =====================================================================
 
 
-def compute_independence_hhi_do_no_discard_and_no_bootstrapping(
+from typing import Dict, Union
+import polars as pl
+
+def compute_independence_hhi_do_no_discard_and_no_bootstrapping_all_unique(
     ctx: IndividualProjectContext,
     window_size: int,
     mode: str,
     n_bootstraps: int,
 ) -> Union[Dict[str, float], Dict[int, Dict[str, float]]]:
-    """Computes Inverse HHI with 95% Bootstrap Confidence Intervals without discarding unaffiliated authors."""
+    """Computes Inverse HHI without discarding unaffiliated authors, treating each as a unique organization."""
     return compute_independence_hhi(
-        ctx, window_size, mode, 1, discard_unaffiliated=False
+        ctx, window_size, mode, n_bootstraps=1, unaffiliated_strategy="unique"
+    )
+
+def compute_independence_hhi_do_no_discard_and_no_bootstrapping_all_same(
+    ctx: IndividualProjectContext,
+    window_size: int,
+    mode: str,
+    n_bootstraps: int,
+) -> Union[Dict[str, float], Dict[int, Dict[str, float]]]:
+    """Computes Inverse HHI without discarding unaffiliated authors, treating them all as the same organization."""
+    return compute_independence_hhi(
+        ctx, window_size, mode, n_bootstraps=1, unaffiliated_strategy="same"
     )
 
 
@@ -159,9 +177,15 @@ def compute_independence_hhi(
     window_size: int,
     mode: str,
     n_bootstraps: int,
-    discard_unaffiliated: bool = True,
+    unaffiliated_strategy: str = "discard",  # Alternatives: "unique", "same"
 ) -> Union[Dict[str, float], Dict[int, Dict[str, float]]]:
     """Computes Inverse HHI with 95% Bootstrap Confidence Intervals."""
+    
+    # Input validation for the strategy
+    valid_strategies = {"discard", "unique", "same"}
+    if unaffiliated_strategy not in valid_strategies:
+        raise ValueError(f"Unknown unaffiliated_strategy: {unaffiliated_strategy}. Expected one of {valid_strategies}")
+
     proposal_counts = (
         ctx.proposal_revisions.join(
             ctx.proposal_revision_authors,
@@ -209,15 +233,24 @@ def compute_independence_hhi(
         .join(ctx.organisations, on="organisation_id", how="left")
     )
 
-    # Process affiliation logic based on the boolean flag
-    if discard_unaffiliated:
+    # Process affiliation logic based on the chosen strategy
+    if unaffiliated_strategy == "discard":
         author_metrics_stream = author_metrics_stream.filter(
             pl.col("organisation_name").is_not_null()
         ).select(["year", "author_id", "organisation_name", "w_a"])
-    else:
+        
+    elif unaffiliated_strategy == "unique":
         author_metrics_stream = author_metrics_stream.with_columns(
             pl.when(pl.col("organisation_name").is_null())
             .then(pl.lit("independent_") + pl.col("author_id").cast(pl.Utf8))
+            .otherwise(pl.col("organisation_name"))
+            .alias("organisation_name")
+        ).select(["year", "author_id", "organisation_name", "w_a"])
+        
+    elif unaffiliated_strategy == "same":
+        author_metrics_stream = author_metrics_stream.with_columns(
+            pl.when(pl.col("organisation_name").is_null())
+            .then(pl.lit("independent_all"))
             .otherwise(pl.col("organisation_name"))
             .alias("organisation_name")
         ).select(["year", "author_id", "organisation_name", "w_a"])
@@ -607,9 +640,13 @@ def get_governance_statistics(
     # Mapping registry to link domains to their engine and target structural attributes
     computation_registry = {
         "independence": (compute_independence_hhi, "independence"),
-        "independence_no_discard": (
-            compute_independence_hhi_do_no_discard_and_no_bootstrapping,
-            "independence_no_discard",
+        "independence_no_discard_all_unique": (
+            compute_independence_hhi_do_no_discard_and_no_bootstrapping_all_unique,
+            "independence_no_discard_all_unique",
+        ),
+        "independence_no_discard_all_same": (
+            compute_independence_hhi_do_no_discard_and_no_bootstrapping_all_same,
+            "independence_no_discard_all_same",
         ),
         "pluralism": (compute_pluralism_author_gini, "pluralism"),
         "representation": (compute_representation_comment_gini, "representation"),

@@ -1,7 +1,9 @@
 import textwrap
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
+from matplotlib import ticker
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -23,11 +25,19 @@ from governance_stats import (
 )
 
 
+@dataclass
+class FontSizeConfig:
+    title_fontsize: int = 24
+    label_fontsize: int = 18
+    annot_fontsize: int = 18
+    ci_fontsize: int = 14
+
+
 def plot_consolidated_line_charts(
     projects_stats: List[GovernanceProjectStats],
     output_dir: Path,
     dimensions: List[str],
-    base_font_size: int,
+    font_config: FontSizeConfig,
 ) -> None:
     """Plots accurate trends displaying continuous line charts overlaid with 95% CI bands."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -68,23 +78,25 @@ def plot_consolidated_line_charts(
 
             ax.set_title(
                 f"Trend Analysis: {dim} (with 95% CI)",
-                fontsize=base_font_size,
+                fontsize=font_config.title_fontsize,
                 fontweight="bold",
                 pad=15,
             )
-            ax.set_xlabel("Year", fontsize=base_font_size - 2)
-            ax.set_ylabel("Score Profile Index", fontsize=base_font_size - 2)
+            ax.set_xlabel("Year", fontsize=font_config.label_fontsize)
+            ax.set_ylabel("Score Profile Index", fontsize=font_config.label_fontsize)
             ax.set_ylim(-0.05, 1.05)
             ax.grid(True, linestyle="--", alpha=0.6)
             ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-            ax.tick_params(axis="both", which="major", labelsize=base_font_size - 3)
+            ax.tick_params(
+                axis="both", which="major", labelsize=font_config.annot_fontsize
+            )
 
             if has_data:
                 ax.legend(
                     loc="upper left",
                     bbox_to_anchor=(1.02, 1),
                     frameon=True,
-                    fontsize=base_font_size - 2,
+                    fontsize=font_config.label_fontsize,
                 )
 
             plt.tight_layout()
@@ -98,13 +110,14 @@ def plot_combined_heatmap(
     projects_stats: List[GovernanceProjectStats],
     output_dir: Path,
     dimensions: List[str],
-    base_font_size: int,
+    font_config: FontSizeConfig,
 ) -> None:
-    """Generates cross-project summary maps letting Seaborn completely handle the styling, colors, and text contrast."""
+    """Generates cross-project summary maps letting Seaborn completely handle the styling, colors, and text contrast.
+
+    Outputs two files: one with CI labels and one without.
+    """
     if not projects_stats or not dimensions:
         return
-
-    normal_text_size = base_font_size - 7
 
     output_dir.mkdir(parents=True, exist_ok=True)
     unique_projects = sorted([p.project_name for p in projects_stats])
@@ -112,8 +125,6 @@ def plot_combined_heatmap(
 
     # Build the DataFrames for values and custom text layers
     matrix_data = np.zeros((len(unique_projects), len(dimensions)))
-
-    # Store CI values for our coordinate plotting step later
     ci_bounds = {}
 
     for d_idx, dim in enumerate(dimensions):
@@ -128,77 +139,96 @@ def plot_combined_heatmap(
     wrapped_labels = [textwrap.fill(dim, width=15) for dim in dimensions]
     df_data = pd.DataFrame(matrix_data, index=unique_projects, columns=wrapped_labels)
 
-    fig, ax = plt.subplots(figsize=(11, 7))
-    try:
-        # Step 1: Let Seaborn map the background colors and render the main text dead-center
-        sns.heatmap(
-            df_data,
-            annot=True,
-            fmt=".2f",
-            vmin=0.0,
-            vmax=1.0,
-            ax=ax,
-            annot_kws={"fontsize": normal_text_size, "fontweight": "bold"},
-            cbar_kws={"label": "Index over 5 years (with 95% CI)"},
-        )
+    # Generate both types of plots (With and Without CI)
+    for show_ci in [True, False]:
+        fig, ax = plt.subplots(figsize=(11, 7))
+        try:
+            cbar_label = (
+                "Index over 5 years (with 95% CI)" if show_ci else "Index over 5 years"
+            )
+            title_label = (
+                "Governance Dimensions Heatmap (5-Year Pooled Matrix with 95% CI)"
+                if show_ci
+                else "Governance Dimensions Heatmap (5-Year Pooled Matrix)"
+            )
 
-        # Step 2: Extract text objects from Seaborn to find the auto-calculated text color
-        # This keeps the styling automatic even if we manually draw the CIs below them
-        text_objects = [t for t in ax.texts]
+            # Step 1: Let Seaborn map the background colors and render the main text dead-center
+            sns.heatmap(
+                df_data,
+                annot=True,
+                fmt=".2f",
+                vmin=0.0,
+                vmax=1.0,
+                ax=ax,
+                annot_kws={
+                    "fontsize": font_config.annot_fontsize,
+                    "fontweight": "bold",
+                },
+                cbar_kws={"label": cbar_label},
+            )
 
-        text_idx = 0
-        for i in range(len(unique_projects)):
-            for j in range(len(dimensions)):
-                # Snatch the color Seaborn picked for this specific grid coordinate
-                native_color = text_objects[text_idx].get_color()
-                text_idx += 1
+            if show_ci:
+                # Step 2: Extract text objects from Seaborn to find the auto-calculated text color
+                text_objects = [t for t in ax.texts]
+                text_idx = 0
+                for i in range(len(unique_projects)):
+                    for j in range(len(dimensions)):
+                        native_color = text_objects[text_idx].get_color()
+                        text_idx += 1
 
-                lower_err, upper_err = ci_bounds[(i, j)]
-                ci_text = f"-{lower_err:.2f} / +{upper_err:.2f}"
+                        lower_err, upper_err = ci_bounds[(i, j)]
+                        ci_text = f"-{lower_err:.2f} / +{upper_err:.2f}"
 
-                # Step 3: Draw the smaller CI layer directly below the center point
-                ax.text(
-                    j + 0.5,  # Centered horizontally
-                    i + 0.78,  # Dropped down past the core number
-                    ci_text,
-                    ha="center",
-                    va="center",
-                    color=native_color,  # Inherits contrast automatically
-                    fontweight="normal",
-                    fontsize=base_font_size - 12,
-                )
+                        # Step 3: Draw the smaller CI layer directly below the center point
+                        ax.text(
+                            j + 0.5,  # Centered horizontally
+                            i + 0.78,  # Dropped down past the core number
+                            ci_text,
+                            ha="center",
+                            va="center",
+                            color=native_color,  # Inherits contrast automatically
+                            fontweight="normal",
+                            fontsize=font_config.ci_fontsize,
+                        )
 
-        # Labels formatting
-        ax.set_xticklabels(
-            wrapped_labels, rotation=0, ha="center", fontsize=normal_text_size
-        )
-        ax.set_yticklabels(unique_projects, rotation=0, fontsize=normal_text_size)
+            # Labels formatting
+            ax.set_xticklabels(
+                wrapped_labels,
+                rotation=0,
+                ha="center",
+                fontsize=font_config.label_fontsize,
+            )
+            ax.set_yticklabels(
+                unique_projects, rotation=0, fontsize=font_config.label_fontsize
+            )
 
-        cbar = ax.collections[0].colorbar
-        cbar.ax.yaxis.label.set_size(normal_text_size)
-        cbar.ax.tick_params(labelsize=normal_text_size)
+            cbar = ax.collections[0].colorbar
+            cbar.ax.yaxis.label.set_size(font_config.label_fontsize)
+            cbar.ax.tick_params(labelsize=font_config.annot_fontsize)
 
-        ax.set_title(
-            "Governance Dimensions Heatmap (5-Year Pooled Matrix)",
-            fontsize=base_font_size + 1,
-            fontweight="bold",
-            pad=20,
-        )
+            ax.set_title(
+                title_label,
+                fontsize=font_config.title_fontsize,
+                fontweight="bold",
+                pad=20,
+            )
 
-        plt.tight_layout()
-
-        output_file = output_dir / "combined_grouped_heatmap.svg"
-        plt.savefig(output_file, bbox_inches="tight")
-        print(f"Heatmap successfully rendered and saved to: {output_file}")
-    finally:
-        plt.close(fig)
+            plt.tight_layout()
+            suffix = "with_ci" if show_ci else "no_ci"
+            output_file = output_dir / f"combined_grouped_heatmap_{suffix}.svg"
+            plt.savefig(output_file, bbox_inches="tight")
+            print(
+                f"Heatmap ({suffix}) successfully rendered and saved to: {output_file}"
+            )
+        finally:
+            plt.close(fig)
 
 
 def plot_combined_parallel_coordinates(
     projects_stats: List[GovernanceProjectStats],
     output_dir: Path,
     dimensions: List[str],
-    base_font_size: int,
+    font_config: FontSizeConfig,
 ) -> None:
     """Constructs a Parallel Coordinates Plot mapping projects using their true pooled 5-year vectors."""
     if not projects_stats or len(dimensions) < 2:
@@ -230,22 +260,22 @@ def plot_combined_parallel_coordinates(
         ax.set_xticks(x_positions)
         ax.set_xticklabels(
             [textwrap.fill(d, width=12) for d in dimensions],
-            fontsize=base_font_size - 3,
+            fontsize=font_config.label_fontsize,
             fontweight="bold",
         )
-        ax.tick_params(axis="y", labelsize=base_font_size - 3)
+        ax.tick_params(axis="y", labelsize=font_config.annot_fontsize)
         ax.set_ylim(-0.05, 1.05)
         ax.grid(axis="y", linestyle="--", alpha=0.5)
         ax.legend(
             loc="upper left",
             bbox_to_anchor=(1.02, 1),
             title="Evaluated Projects",
-            title_fontsize=base_font_size - 2,
-            fontsize=base_font_size - 3,
+            title_fontsize=font_config.label_fontsize,
+            fontsize=font_config.annot_fontsize,
         )
         ax.set_title(
             "Governance Dimensions Parallel Coordinates (5-Year Pooled)",
-            fontsize=base_font_size + 1,
+            fontsize=font_config.title_fontsize,
             fontweight="bold",
             pad=20,
         )
@@ -262,7 +292,7 @@ def plot_project_radars(
     projects_stats: List[GovernanceProjectStats],
     output_dir: Path,
     dimensions: List[str],
-    base_font_size: int,
+    font_config: FontSizeConfig,
 ) -> None:
     """Generates localized spider radar profiles per project parsing accurate block structures."""
     if not dimensions:
@@ -286,7 +316,7 @@ def plot_project_radars(
             ax.set_theta_direction(-1)
             ax.set_xticks(angles)
             ax.set_xticklabels(
-                labels, color="#2c3e50", size=base_font_size - 3, weight="bold"
+                labels, color="#2c3e50", size=font_config.label_fontsize, weight="bold"
             )
             ax.set_ylim(0, 1.0)
             ax.tick_params(axis="x", pad=22)
@@ -297,11 +327,11 @@ def plot_project_radars(
             ax.set_yticklabels(
                 ["0.2", "0.4", "0.6", "0.8", "1.0"],
                 color="grey",
-                size=base_font_size - 3,
+                size=font_config.annot_fontsize,
             )
             ax.set_title(
                 f"{p_obj.project_name} - Governance Profile (5-Year Pooled)",
-                fontsize=base_font_size + 1,
+                fontsize=font_config.title_fontsize,
                 fontweight="bold",
                 pad=30,
                 y=1.05,
@@ -311,7 +341,8 @@ def plot_project_radars(
                 c if c.isalnum() else "_" for c in p_obj.project_name
             ).lower()
             plt.savefig(
-                radar_dir / f"proportional_radar_{safe_name}.svg", bbox_inches="tight"
+                radar_dir / f"proportional_radar_{safe_name}.svg",
+                bbox_inches="tight",
             )
         finally:
             plt.close(fig)
@@ -321,16 +352,18 @@ def plot_dimensions_correlation(
     projects_stats: List["GovernanceProjectStats"],
     output_dir: Path,
     dimensions: List[str],
-    base_font_size: int,
+    font_config: FontSizeConfig,
 ) -> None:
-    """Calculates correlations and renders visual matrices accompanied by markdown logs."""
+    """Calculates correlations and renders visual matrices accompanied by markdown logs.
+
+    Outputs two files per method: one with CI text modifications and one without.
+    """
     if len(dimensions) < 2 or not projects_stats:
         return
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    normal_text_size = base_font_size - 3
 
-    # Step 1: Run the calculation engine (now returning our strongly-typed dict)
+    # Step 1: Run the calculation engine
     correlation_data: CorrelationResults = calculate_dimensions_correlation(
         projects_stats, dimensions
     )
@@ -347,83 +380,101 @@ def plot_dimensions_correlation(
     }
 
     for method, payload in correlation_data.items():
-        # Clean attribute access replacing legacy dict string lookups
         corr_df = payload.corr_df
         ci_bounds = payload.ci_bounds
         corr_matrix = corr_df.values
-        cbar_label = labels_map[method]
+        p_matrix = payload.p_values_df.values
+        cbar_base = labels_map[method]
 
         # Rename columns/index for clean plotting display
         df_plot = corr_df.copy()
         df_plot.columns = wrapped_labels
         df_plot.index = wrapped_labels
 
-        # --- Visual Heatmap Generation ---
-        fig, ax = plt.subplots(figsize=(10, 8))
+        # Render both types of graphs (With and Without CI)
+        for show_ci in [True, False]:
+            fig, ax = plt.subplots(figsize=(10, 8))
 
-        sns.heatmap(
-            df_plot,
-            mask=mask,
-            cmap="coolwarm",
-            vmax=1.0,
-            vmin=-1.0,
-            center=0,
-            annot=True,
-            fmt=".2f",
-            annot_kws={"fontsize": normal_text_size, "fontweight": "bold"},
-            cbar_kws={"label": f"{cbar_label} (with 95% CI)", "shrink": 0.8},
-            ax=ax,
-        )
+            cbar_label = f"{cbar_base} (with 95% CI)" if show_ci else cbar_base
+            title_label = (
+                f"Governance Dimensions Correlation ({method.capitalize()} with 95% CI)"
+                if show_ci
+                else f"Governance Dimensions Correlation ({method.capitalize()})"
+            )
 
-        # Snatch Seaborn's text elements to dynamically clone auto-contrasting colors
-        text_objects = [t for t in ax.texts]
+            sns.heatmap(
+                df_plot,
+                mask=mask,
+                cmap="coolwarm",
+                vmax=1.0,
+                vmin=-1.0,
+                center=0,
+                annot=True,
+                fmt=".2f",
+                annot_kws={
+                    "fontsize": font_config.annot_fontsize,
+                    "fontweight": "bold",
+                },
+                cbar_kws={"label": cbar_label, "shrink": 0.8},
+                ax=ax,
+            )
 
-        text_idx = 0
-        for i in range(len(dimensions)):
-            for j in range(len(dimensions)):
-                # If it's masked or on the diagonal, Seaborn skips drawing text,
-                # so we only track active text fields in the lower triangle
-                if i > j:
-                    native_color = text_objects[text_idx].get_color()
-                    text_idx += 1
+            if show_ci:
+                # Snatch Seaborn's text elements to dynamically clone auto-contrasting colors
+                text_objects = [t for t in ax.texts]
+                text_idx = 0
+                for i in range(len(dimensions)):
+                    for j in range(len(dimensions)):
+                        if i > j:
+                            native_color = text_objects[text_idx].get_color()
+                            text_idx += 1
 
-                    lower_err, upper_err = ci_bounds[(i, j)]
-                    ci_text = f"-{lower_err:.2f} / +{upper_err:.2f}"
+                            lower_err, upper_err = ci_bounds[(i, j)]
+                            ci_text = f"-{lower_err:.2f} / +{upper_err:.2f}"
 
-                    # Write the smaller CI adjustment string under the main value text layer
-                    ax.text(
-                        j + 0.5,
-                        i + 0.76,
-                        ci_text,
-                        ha="center",
-                        va="center",
-                        color=native_color,
-                        fontweight="normal",
-                        fontsize=base_font_size - 10,
-                    )
+                            # Write the smaller CI adjustment string under the main value text layer
+                            ax.text(
+                                j + 0.5,
+                                i + 0.76,
+                                ci_text,
+                                ha="center",
+                                va="center",
+                                color=native_color,
+                                fontweight="normal",
+                                fontsize=font_config.ci_fontsize,
+                            )
 
-        # Style labels and axes dynamically mapping text sizes
-        ax.set_xticklabels(
-            wrapped_labels, rotation=45, ha="right", fontsize=normal_text_size
-        )
-        ax.set_yticklabels(wrapped_labels, rotation=0, fontsize=normal_text_size)
+            # Style labels and axes dynamically mapping text sizes
+            ax.set_xticklabels(
+                wrapped_labels,
+                rotation=45,
+                ha="right",
+                fontsize=font_config.label_fontsize,
+            )
+            ax.set_yticklabels(
+                wrapped_labels, rotation=0, fontsize=font_config.label_fontsize
+            )
 
-        cbar = ax.collections[0].colorbar
-        cbar.ax.yaxis.label.set_size(base_font_size - 2)
-        cbar.ax.tick_params(labelsize=normal_text_size)
+            cbar = ax.collections[0].colorbar
+            cbar.ax.yaxis.label.set_size(font_config.label_fontsize)
+            cbar.ax.tick_params(labelsize=font_config.annot_fontsize)
 
-        ax.set_title(
-            "Governance Dimensions Correlation",
-            fontsize=base_font_size + 1,
-            fontweight="bold",
-            pad=20,
-        )
+            ax.set_title(
+                title_label,
+                fontsize=font_config.title_fontsize,
+                fontweight="bold",
+                pad=20,
+            )
 
-        plt.tight_layout()
-        plt.savefig(output_dir / f"dimensions_{method}_matrix.svg", bbox_inches="tight")
-        plt.close(fig)
+            plt.tight_layout()
+            suffix = "with_ci" if show_ci else "no_ci"
+            plt.savefig(
+                output_dir / f"dimensions_{method}_matrix_{suffix}.svg",
+                bbox_inches="tight",
+            )
+            plt.close(fig)
 
-        # --- Markdown Table Generation ---
+        # --- Markdown Table Generation (Keeps complete info summary) ---
         markdown_path = output_dir / f"dimensions_{method}_matrix.md"
         md_lines = [
             "# Governance Dimensions Correlation\n",
@@ -439,7 +490,10 @@ def plot_dimensions_correlation(
                 if i > j:
                     r = corr_matrix[i, j]
                     l_err, u_err = ci_bounds[(i, j)]
-                    cells.append(f"{r:.2f} [-{l_err:.2f}/+{u_err:.2f}]")
+                    p_value = p_matrix[i, j]
+                    cells.append(
+                        f"{r:.2f} [-{l_err:.2f}/+{u_err:.2f}] (p_value={p_value:.4f})"
+                    )
                 else:
                     cells.append("")
             md_lines.append("| " + " | ".join(cells) + " |")
@@ -451,7 +505,7 @@ def plot_governance_dendrogram(
     projects_stats: List[GovernanceProjectStats],
     output_dir: Path,
     dimensions: List[str],
-    base_font_size: int,
+    font_config: FontSizeConfig,
 ) -> None:
     """Applies agglomerative hierarchical clustering on project profiles utilizing true pooled vectors."""
     if not projects_stats or not dimensions:
@@ -487,22 +541,23 @@ def plot_governance_dendrogram(
             labels=unique_projects,
             orientation="top",
             leaf_rotation=45,
-            leaf_font_size=base_font_size - 2,
+            leaf_font_size=font_config.label_fontsize,
             ax=ax,
         )
         ax.set_title(
             "Hierarchical Structural Taxonomy (Ward's Linkage)",
-            fontsize=base_font_size + 1,
+            fontsize=font_config.title_fontsize,
             fontweight="bold",
             pad=15,
         )
-        ax.set_ylabel("Cophetic Distance", fontsize=base_font_size - 2)
-        ax.tick_params(axis="y", labelsize=base_font_size - 3)
+        ax.set_ylabel("Cophenetic Distance", fontsize=font_config.label_fontsize)
+        ax.tick_params(axis="y", labelsize=font_config.annot_fontsize)
         ax.grid(axis="y", linestyle="--", alpha=0.4)
 
         plt.tight_layout()
         plt.savefig(
-            output_dir / "governance_hierarchy_dendrogram.svg", bbox_inches="tight"
+            output_dir / "governance_hierarchy_dendrogram.svg",
+            bbox_inches="tight",
         )
     finally:
         plt.close(fig)
@@ -543,7 +598,7 @@ def plot_projects_2d(
     projects_stats: List[GovernanceProjectStats],
     output_dir: Path,
     dimensions: List[str],
-    base_font_size: int,
+    font_config: FontSizeConfig,
 ) -> None:
     """Projects projects into 2D space using PCA (via SVD) and renders a scatter plot."""
     if len(projects_stats) < 2 or not dimensions:
@@ -602,7 +657,7 @@ def plot_projects_2d(
                 x,
                 y,
                 f"  {p_name}",
-                fontsize=base_font_size - 4,
+                fontsize=font_config.annot_fontsize,
                 va="center",
                 ha="left",
                 fontweight="semibold",
@@ -611,27 +666,27 @@ def plot_projects_2d(
 
         ax.set_title(
             "Project Governance Space (2D PCA Projection)",
-            fontsize=base_font_size + 1,
+            fontsize=font_config.title_fontsize,
             fontweight="bold",
             pad=15,
         )
         ax.set_xlabel(
             f"Principal Component 1 ({explained_variance_ratio[0] * 100:.1f}% Variance)",
-            fontsize=base_font_size - 2,
+            fontsize=font_config.label_fontsize,
         )
         ax.set_ylabel(
             f"Principal Component 2 ({explained_variance_ratio[1] * 100:.1f}% Variance)",
-            fontsize=base_font_size - 2,
+            fontsize=font_config.label_fontsize,
         )
         ax.grid(True, linestyle="--", alpha=0.5, zorder=1)
-        ax.tick_params(axis="both", which="major", labelsize=base_font_size - 3)
+        ax.tick_params(axis="both", which="major", labelsize=font_config.annot_fontsize)
 
         ax.legend(
             loc="upper left",
             bbox_to_anchor=(1.02, 1),
             title="Projects",
-            title_fontsize=base_font_size - 2,
-            fontsize=base_font_size - 3,
+            title_fontsize=font_config.label_fontsize,
+            fontsize=font_config.annot_fontsize,
             frameon=True,
         )
 
@@ -644,29 +699,259 @@ def plot_projects_2d(
 def show_independence_with_and_without_discard(
     project_governance_stats: List[GovernanceProjectStats],
     output_dir: Path,
-    base_font_size: int,
+    font_config: FontSizeConfig,
 ) -> None:
+    """Generates the markdown comparison report for independence configurations."""
     path = output_dir / "independence_comparison.md"
     lines = [
         "# Independence Metric Comparison: With vs. Without Unaffiliated Discarding\n",
         "This report compares the Independence metric calculated with the standard approach (discarding unaffiliated authors) against a modified approach that retains all authors regardless of affiliation status.\n",
-        "| Project Name | Independence (Discarding Unaffiliated) | Independence (No Discarding) | Difference |\n",
+        "| Project Name | Independence (Discarding Unaffiliated) | Independence (All unique) | Independence (All same) |\n",
         "| :--- | :---: | :---: | :---: |\n",
     ]
     for p_stat in project_governance_stats:
         ind_disc = p_stat.pooled_metrics.independence.val
-        ind_no_disc = p_stat.pooled_metrics.independence_no_discard.val
-        diff = ind_no_disc - ind_disc
+        ind_no_disc_all_unique = (
+            p_stat.pooled_metrics.independence_no_discard_all_unique.val
+        )
+        ind_no_disc_all_same = (
+            p_stat.pooled_metrics.independence_no_discard_all_same.val
+        )
+        diff1 = ind_no_disc_all_unique - ind_disc
+        diff2 = ind_no_disc_all_same - ind_disc
         lines.append(
-            f"| {p_stat.project_name} | {ind_disc:.4f} | {ind_no_disc:.4f} | {diff:.4f} |\n"
+            f"| {p_stat.project_name} | {ind_disc:.4f} | {ind_no_disc_all_unique:.4f} ({diff1:.4f}) | {ind_no_disc_all_same:.4f} ({diff2:.4f}) |\n"
         )
     path.write_text("".join(lines), encoding="utf-8")
+
+
+def plot_clustered_governance_heatmap(
+    projects_stats: List[GovernanceProjectStats],
+    output_dir: Path,
+    dimensions: List[str],
+    font_config: FontSizeConfig,
+) -> None:
+    """Generates cross-project summary maps with an integrated y-axis dendrogram
+    representing hierarchical taxonomy via Ward's Linkage and Cophenetic criteria.
+
+    Uses native Seaborn layout properties to automatically anchor and stretch
+    the colorbar tracking legend perfectly on the right side with zero label overlap.
+    """
+    if not projects_stats or not dimensions:
+        return
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    unique_projects = sorted([p.project_name for p in projects_stats])
+    project_map = {p.project_name: p for p in projects_stats}
+
+    # 1. Build the continuous evaluation metrics profile arrays
+    matrix_data = np.zeros((len(unique_projects), len(dimensions)))
+    ci_bounds = {}
+
+    for d_idx, dim in enumerate(dimensions):
+        for p_idx, p_name in enumerate(unique_projects):
+            interval = _get_metric_data(project_map[p_name], dim, mode="pooled")
+            matrix_data[p_idx, d_idx] = interval.val
+
+            upper_err = interval.ci_high - interval.val
+            lower_err = interval.val - interval.ci_low
+            ci_bounds[(p_idx, d_idx)] = (lower_err, upper_err)
+
+    wrapped_labels = [textwrap.fill(dim, width=15) for dim in dimensions]
+    df_data = pd.DataFrame(matrix_data, index=unique_projects, columns=wrapped_labels)
+
+    # 2. Compute true Cophenetic structural linkage hierarchy (Ward variance minimization)
+    Z = linkage(matrix_data, method="ward")
+    max_distance = Z[:, 2].max()
+
+    orign_distances = pdist(matrix_data)
+    coph_corr, _ = cophenet(Z, orign_distances)
+
+    with open(output_dir / "governance_clustered_heatmap_cophenetic.txt", "w") as f:
+        f.write(f"Cophenetic Correlation Coefficient: {coph_corr:.4f}\n")
+
+    # 3. Generate visual matrices configurations (With and Without CI)
+    for show_ci in [True, False]:
+        cbar_label = (
+            "Index over 5 years (with 95% CI)" if show_ci else "Index over 5 years"
+        )
+        title_label = (
+            "Governance Dimensions Clustered Heatmap\n(Ward's Linkage with 95% CI)"
+            if show_ci
+            else "Governance Dimensions Clustered Heatmap\n(Ward's Linkage)"
+        )
+
+        g = sns.clustermap(
+            df_data,
+            row_linkage=Z,
+            col_cluster=False,
+            cmap="viridis",
+            vmin=0.0,
+            vmax=1.0,
+            annot=True,
+            fmt=".2f",
+            annot_kws={"fontsize": font_config.annot_fontsize, "fontweight": "bold"},
+            cbar_kws={"label": cbar_label},
+            dendrogram_ratio=(0.18, 0.04),
+            figsize=(13, 10),
+        )
+
+        try:
+            ax = g.ax_heatmap
+
+            # Reformat label visuals using your structured FontConfig parameters
+            ax.set_xticklabels(
+                wrapped_labels,
+                rotation=0,
+                ha="center",
+                fontsize=font_config.label_fontsize,
+            )
+
+            reordered_rows = g.dendrogram_row.reordered_ind
+            clustered_projects = [unique_projects[idx] for idx in reordered_rows]
+            ax.set_yticklabels(
+                clustered_projects, rotation=0, fontsize=font_config.label_fontsize
+            )
+
+            # Label padding adjustments to cleanly handle expanded font sizes
+            ax.tick_params(axis="x", pad=12)
+            ax.tick_params(axis="y", pad=12)
+
+            # --- EXPOSE AND FORMAT THE RAW DISTANCE SCALE ---
+            dendro_ax = g.ax_row_dendrogram
+            dendro_ax.axis("on")
+            dendro_ax.yaxis.set_visible(False)
+
+            if max_distance > 0:
+                dendro_ax.set_xlim(max_distance, 0)
+                dendro_ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=4))
+
+            # Enforce 1 decimal format rule string parameters natively
+            dendro_ax.xaxis.set_major_formatter(ticker.FormatStrFormatter("%.1f"))
+
+            dendro_ax.tick_params(
+                axis="x",
+                which="both",
+                bottom=True,
+                top=False,
+                labelbottom=True,
+                labelsize=font_config.label_fontsize - 2,
+                length=5,
+            )
+
+            dendro_ax.set_xlabel(
+                "Linkage Distance",
+                fontsize=font_config.label_fontsize,
+                fontweight="semibold",
+                labelpad=10,
+            )
+
+            dendro_ax.grid(True, axis="x", linestyle=":", alpha=0.5)
+
+            for spine in ["top", "left", "right"]:
+                dendro_ax.spines[spine].set_visible(False)
+
+            if show_ci:
+                text_objects = [t for t in ax.texts]
+                text_idx = 0
+
+                for v_idx in range(len(unique_projects)):
+                    orig_p_idx = reordered_rows[v_idx]
+                    for j in range(len(dimensions)):
+                        native_color = text_objects[text_idx].get_color()
+                        text_idx += 1
+
+                        lower_err, upper_err = ci_bounds[(orig_p_idx, j)]
+                        ci_text = f"-{lower_err:.2f} / +{upper_err:.2f}"
+
+                        ax.text(
+                            j + 0.5,
+                            v_idx + 0.78,
+                            ci_text,
+                            ha="center",
+                            va="center",
+                            color=native_color,
+                            fontweight="normal",
+                            fontsize=font_config.ci_fontsize,
+                        )
+
+            # Precise Title Formatting Mounting using native logic bounds
+            ax.set_title(
+                title_label,
+                fontsize=font_config.title_fontsize,
+                fontweight="bold",
+                pad=28,
+            )
+
+            # --- PERFECT RIGHT-SIDE 1:1 HEIGHT ALIGNMENT + POSITION OFFSET FIX ---
+            heatmap_box = g.ax_heatmap.get_position()
+            cbar_box = g.ax_cbar.get_position()
+
+            # Shifted position offset modifier up to +0.12 to give your row label strings
+            # plenty of clearance space before hitting the colorbar's numerical legends
+            g.ax_cbar.set_position(
+                [
+                    heatmap_box.x1
+                    + 0.16,  # Added safe spacing margin padding on the X-axis
+                    heatmap_box.y0,  # Syncs baseline alignment to match the heatmap's bottom boundary exactly
+                    cbar_box.width,  # Retains original balanced bar thickness scale width
+                    heatmap_box.height,  # Stretches vertical layout to match the matrix grid height 1:1
+                ]
+            )
+
+            cbar = ax.collections[0].colorbar
+            if cbar:
+                cbar.ax.yaxis.label.set_size(font_config.label_fontsize)
+                cbar.ax.tick_params(labelsize=font_config.label_fontsize)
+                cbar.ax.yaxis.labelpad = 15
+
+            suffix = "with_ci" if show_ci else "no_ci"
+            output_file = output_dir / f"combined_clustered_heatmap_{suffix}.svg"
+            g.savefig(output_file, bbox_inches="tight")
+            print(f"Clustered Heatmap ({suffix}) successfully saved to: {output_file}")
+
+        finally:
+            plt.close(g.fig)
+
+    # 4. Generate Markdown Clustering Tree Audit Trail Log
+    markdown_path = output_dir / "governance_clustered_heatmap_taxonomy.md"
+    md_lines = [
+        "# Hierarchical Agglomerative Clustering Audit Trail (Heatmap Row Order)",
+        "\nThis report logs the variance minimization distance progression during bottom-up tree structural building calculations.\n",
+        "| Step | Target Cluster A | Target Cluster B | Linkage Distance Threshold | Formed Leaf/Node Cluster Size |",
+        "| :---: | :--- | :--- | :---: | :---: |",
+    ]
+
+    current_node_names = list(unique_projects)
+    num_leaves = len(unique_projects)
+
+    for i, row in enumerate(Z):
+        idx_a, idx_b, distance, cluster_size = (
+            int(row[0]),
+            int(row[1]),
+            row[2],
+            int(row[3]),
+        )
+        name_a = current_node_names[idx_a]
+        name_b = current_node_names[idx_b]
+        new_node_name = f"Node_Cluster_{num_leaves + i} ({name_a} + {name_b})"
+        current_node_names.append(new_node_name)
+        md_lines.append(
+            f"| {i + 1} | {name_a} | {name_b} | {distance:.4f} | {cluster_size} |"
+        )
+
+    markdown_path.write_text("\n".join(md_lines), encoding="utf-8")
+
+
+# =====================================================================
+# 3. Execution Pipeline Entry Point
+# =====================================================================
 
 
 def show_governance_in_plots(
     project_governance_stats: List[GovernanceProjectStats],
     output_dir: Path,
-    base_font_size: int,
+    font_config: FontSizeConfig,
 ) -> None:
     """Calculates flat trend lines and robust multi-year pooled profiles over all data assets."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -682,36 +967,43 @@ def show_governance_in_plots(
 
     print("Executing visualization generation tasks over grouped structural records...")
 
+    plot_clustered_governance_heatmap(
+        project_governance_stats, output_dir, dimensions, font_config
+    )
     plot_consolidated_line_charts(
-        project_governance_stats, output_dir, dimensions, base_font_size
+        project_governance_stats, output_dir, dimensions, font_config
     )
-    plot_combined_heatmap(
-        project_governance_stats, output_dir, dimensions, base_font_size
-    )
+    plot_combined_heatmap(project_governance_stats, output_dir, dimensions, font_config)
     plot_combined_parallel_coordinates(
-        project_governance_stats, output_dir, dimensions, base_font_size
+        project_governance_stats, output_dir, dimensions, font_config
     )
-    plot_project_radars(
-        project_governance_stats, output_dir, dimensions, base_font_size
-    )
+    plot_project_radars(project_governance_stats, output_dir, dimensions, font_config)
     plot_dimensions_correlation(
-        project_governance_stats, output_dir, dimensions, base_font_size
+        project_governance_stats, output_dir, dimensions, font_config
     )
     plot_governance_dendrogram(
-        project_governance_stats, output_dir, dimensions, base_font_size
+        project_governance_stats, output_dir, dimensions, font_config
     )
-    plot_projects_2d(project_governance_stats, output_dir, dimensions, base_font_size)
+    plot_projects_2d(project_governance_stats, output_dir, dimensions, font_config)
     show_independence_with_and_without_discard(
-        project_governance_stats, output_dir, base_font_size
+        project_governance_stats, output_dir, font_config
     )
 
-    # Output Tables Summary Generation formatting point values cleanly
+    # Output Tables Summary Generation formatting point values cleanly with 95% CI
     table_data = {"Governance Domain Framework Structure": dimensions}
     for p_record in project_governance_stats:
-        table_data[p_record.project_name] = [
-            f"{_get_metric_data(p_record, dim, mode='pooled').val:.4f}"
-            for dim in dimensions
-        ]
+        project_cells = []
+        for dim in dimensions:
+            interval = _get_metric_data(p_record, dim, mode="pooled")
+            val = interval.val
+            lower_err = val - interval.ci_low
+            upper_err = interval.ci_high - val
+
+            # Formats as: 0.8500 [-0.05 / +0.03]
+            cell_str = f"{val:.4f} [-{lower_err:.2f}/+{upper_err:.2f}]"
+            project_cells.append(cell_str)
+
+        table_data[p_record.project_name] = project_cells
 
     summary_df = pl.DataFrame(table_data)
     with pl.Config(

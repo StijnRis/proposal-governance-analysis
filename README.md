@@ -7,6 +7,8 @@
 
 Research codebase for analysing how governance metrics evolve across multiple open-source projects by mining and processing enhancement proposals.
 
+This project has been made as part of the research project 2026 at TU Delft (https://github.com/TU-Delft-CSE/Research-Project).
+
 ### Key Points
 
 * **Language:** Python 3.13
