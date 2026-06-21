@@ -18,8 +18,8 @@ class MetricInterval:
     """Holds a point estimate alongside its empirical confidence bounds."""
 
     val: float
-    ci_low: float
-    ci_high: float
+    ci_low: Union[float, None]
+    ci_high: Union[float, None]
 
 
 @dataclass
@@ -32,11 +32,15 @@ class MetricTimeline:
 
 @dataclass
 class ProjectMetricsProfile:
-    """Groups all 5 distinct metric timelines to prevent arbitrary string dictionary lookups."""
+    """Groups all 7 distinct metric timelines to prevent arbitrary string dictionary lookups."""
 
     independence: MetricTimeline = field(default_factory=MetricTimeline)
-    independence_no_discard_all_unique: MetricTimeline = field(default_factory=MetricTimeline)
-    independence_no_discard_all_same: MetricTimeline = field(default_factory=MetricTimeline)
+    independence_no_discard_all_unique: MetricTimeline = field(
+        default_factory=MetricTimeline
+    )
+    independence_no_discard_all_same: MetricTimeline = field(
+        default_factory=MetricTimeline
+    )
     pluralism: MetricTimeline = field(default_factory=MetricTimeline)
     representation: MetricTimeline = field(default_factory=MetricTimeline)
     decentralization: MetricTimeline = field(default_factory=MetricTimeline)
@@ -108,18 +112,29 @@ def _bootstrap_interval(
     cluster_col: str,
     n_bootstraps: int,
     ci: float = 0.95,
-) -> Dict[str, float]:
+) -> Dict[str, Union[float, None]]:
     """Helper that handles the resampling and percentile extraction."""
     point_est = calc_fn(df)
     if df.is_empty():
-        return {"val": point_est, "ci_low": point_est, "ci_high": point_est}
+        return {"val": point_est, "ci_low": None, "ci_high": None}
 
     # Extract unique cluster keys to sample with replacement safely
     unique_keys = df[cluster_col].unique().to_numpy()
     n_keys = len(unique_keys)
 
-    if n_keys < 5:  # Too few observations to calculate a meaningful variance
-        return {"val": point_est, "ci_low": point_est, "ci_high": point_est}
+    # Fall back to standard error if we have at least 2 points to get a variance
+    if n_keys < 5:
+        if n_keys >= 2:
+            std_err = df["w_a"].std() / np.sqrt(n_keys) if "w_a" in df.columns else 0.0
+
+            # 95% CI approximation (z = 1.96)
+            margin_of_error = 1.96 * (std_err if std_err is not None else 0.0)
+            return {
+                "val": point_est,
+                "ci_low": float(max(0.0, point_est - margin_of_error)),
+                "ci_high": float(min(1.0, point_est + margin_of_error)),
+            }
+        return {"val": point_est, "ci_low": 0.0, "ci_high": 1.0}
 
     boot_estimates = []
     # Using a deterministic seed sequence for reproducible CIs
@@ -146,9 +161,6 @@ def _bootstrap_interval(
 # =====================================================================
 
 
-from typing import Dict, Union
-import polars as pl
-
 def compute_independence_hhi_do_no_discard_and_no_bootstrapping_all_unique(
     ctx: IndividualProjectContext,
     window_size: int,
@@ -159,6 +171,7 @@ def compute_independence_hhi_do_no_discard_and_no_bootstrapping_all_unique(
     return compute_independence_hhi(
         ctx, window_size, mode, n_bootstraps=1, unaffiliated_strategy="unique"
     )
+
 
 def compute_independence_hhi_do_no_discard_and_no_bootstrapping_all_same(
     ctx: IndividualProjectContext,
@@ -180,11 +193,12 @@ def compute_independence_hhi(
     unaffiliated_strategy: str = "discard",  # Alternatives: "unique", "same"
 ) -> Union[Dict[str, float], Dict[int, Dict[str, float]]]:
     """Computes Inverse HHI with 95% Bootstrap Confidence Intervals."""
-    
-    # Input validation for the strategy
+
     valid_strategies = {"discard", "unique", "same"}
     if unaffiliated_strategy not in valid_strategies:
-        raise ValueError(f"Unknown unaffiliated_strategy: {unaffiliated_strategy}. Expected one of {valid_strategies}")
+        raise ValueError(
+            f"Unknown unaffiliated_strategy: {unaffiliated_strategy}. Expected one of {valid_strategies}"
+        )
 
     proposal_counts = (
         ctx.proposal_revisions.join(
@@ -216,10 +230,11 @@ def compute_independence_hhi(
 
     if all_years_authors.is_empty():
         return (
-            {"val": 0.0, "ci_low": 0.0, "ci_high": 0.0} if mode == "most_recent" else {}
+            {"val": 0.0, "ci_low": None, "ci_high": None}
+            if mode == "most_recent"
+            else {}
         )
 
-    # Base stream setup
     author_metrics_stream = (
         all_years_authors.join(proposal_counts, on=["year", "author_id"], how="left")
         .join(comment_counts, on=["year", "author_id"], how="left")
@@ -233,12 +248,11 @@ def compute_independence_hhi(
         .join(ctx.organisations, on="organisation_id", how="left")
     )
 
-    # Process affiliation logic based on the chosen strategy
     if unaffiliated_strategy == "discard":
         author_metrics_stream = author_metrics_stream.filter(
             pl.col("organisation_name").is_not_null()
         ).select(["year", "author_id", "organisation_name", "w_a"])
-        
+
     elif unaffiliated_strategy == "unique":
         author_metrics_stream = author_metrics_stream.with_columns(
             pl.when(pl.col("organisation_name").is_null())
@@ -246,7 +260,7 @@ def compute_independence_hhi(
             .otherwise(pl.col("organisation_name"))
             .alias("organisation_name")
         ).select(["year", "author_id", "organisation_name", "w_a"])
-        
+
     elif unaffiliated_strategy == "same":
         author_metrics_stream = author_metrics_stream.with_columns(
             pl.when(pl.col("organisation_name").is_null())
@@ -267,7 +281,7 @@ def compute_independence_hhi(
             return 0.0
         return float(1.0 - ((org_shares["total_org_weight"] / total_weight) ** 2).sum())
 
-    def _calculate_core_hhi(sliced_df: pl.DataFrame) -> Dict[str, float]:
+    def _calculate_core_hhi(sliced_df: pl.DataFrame) -> Dict[str, Union[float, None]]:
         return _bootstrap_interval(
             sliced_df,
             _score_fn,
@@ -275,7 +289,14 @@ def compute_independence_hhi(
             n_bootstraps=n_bootstraps,
         )
 
-    max_year = author_metrics_stream.select(pl.col("year").max()).item()
+    if author_metrics_stream.is_empty():
+        return (
+            {"val": 0.0, "ci_low": None, "ci_high": None}
+            if mode == "most_recent"
+            else {}
+        )
+
+    max_year = author_metrics_stream.select(pl.col("year").max()).item() - 1
 
     if mode == "most_recent":
         pooled_df = author_metrics_stream.filter(
@@ -285,14 +306,16 @@ def compute_independence_hhi(
 
     if mode == "all_windows":
         min_year = author_metrics_stream.select(pl.col("year").min()).item()
-        return {
-            end_year: _calculate_core_hhi(
-                author_metrics_stream.filter(
-                    pl.col("year").is_between(end_year - window_size + 1, end_year)
-                )
+        results = {}
+        for end_year in range(min_year, max_year + 1):
+            window_df = author_metrics_stream.filter(
+                pl.col("year").is_between(end_year - window_size + 1, end_year)
             )
-            for end_year in range(min_year, max_year + 1)
-        }
+            # Guard against structural drops
+            if not window_df.is_empty():
+                results[end_year] = _calculate_core_hhi(window_df)
+        return results
+
     raise ValueError(f"Unknown mode: {mode}")
 
 
@@ -312,7 +335,9 @@ def compute_pluralism_author_gini(
 
     if df.is_empty():
         return (
-            {"val": 0.0, "ci_low": 0.0, "ci_high": 0.0} if mode == "most_recent" else {}
+            {"val": 0.0, "ci_low": None, "ci_high": None}
+            if mode == "most_recent"
+            else {}
         )
 
     def _score_fn(sliced_df: pl.DataFrame) -> float:
@@ -325,7 +350,9 @@ def compute_pluralism_author_gini(
         )
         return float(gini_expr.item()) if not gini_expr.is_empty() else 0.0
 
-    def _calculate_core_pluralism(sliced_df: pl.DataFrame) -> Dict[str, float]:
+    def _calculate_core_pluralism(
+        sliced_df: pl.DataFrame,
+    ) -> Dict[str, Union[float, None]]:
         return _bootstrap_interval(
             sliced_df, _score_fn, cluster_col="author_id", n_bootstraps=n_bootstraps
         )
@@ -340,14 +367,16 @@ def compute_pluralism_author_gini(
 
     if mode == "all_windows":
         min_year = df.select(pl.col("year").min()).item()
-        return {
-            end_year: _calculate_core_pluralism(
-                df.filter(
-                    pl.col("year").is_between(end_year - window_size + 1, end_year)
-                )
+        results = {}
+        for end_year in range(min_year, max_year + 1):
+            window_df = df.filter(
+                pl.col("year").is_between(end_year - window_size + 1, end_year)
             )
-            for end_year in range(min_year, max_year + 1)
-        }
+            # Guard against missing slices
+            if not window_df.is_empty():
+                results[end_year] = _calculate_core_pluralism(window_df)
+        return results
+
     raise ValueError(f"Unknown mode: {mode}")
 
 
@@ -388,7 +417,9 @@ def compute_centralization_metrics(
 
     if all_events.is_empty():
         return (
-            {"val": 0.0, "ci_low": 0.0, "ci_high": 0.0} if mode == "most_recent" else {}
+            {"val": 0.0, "ci_low": None, "ci_high": None}
+            if mode == "most_recent"
+            else {}
         )
 
     def _score_fn(sliced_df: pl.DataFrame) -> float:
@@ -447,8 +478,9 @@ def compute_centralization_metrics(
         cb_index = float(cb_sum_diff / cb_denom if cb_denom > 0 else 0.0)
         return float(max(0.0, min(1.0, 1.0 - cb_index)))
 
-    def _calculate_core_centralization(sliced_df: pl.DataFrame) -> Dict[str, float]:
-        # Resampling grouped by proposal structure ensures network paths hold integrity
+    def _calculate_core_centralization(
+        sliced_df: pl.DataFrame,
+    ) -> Dict[str, Union[float, None]]:
         return _bootstrap_interval(
             sliced_df, _score_fn, cluster_col="proposal_id", n_bootstraps=n_bootstraps
         )
@@ -463,14 +495,16 @@ def compute_centralization_metrics(
 
     if mode == "all_windows":
         min_year = all_events.select(pl.col("year").min()).item()
-        return {
-            end_year: _calculate_core_centralization(
-                all_events.filter(
-                    pl.col("year").is_between(end_year - window_size + 1, end_year)
-                )
+        results = {}
+        for end_year in range(min_year, max_year + 1):
+            window_df = all_events.filter(
+                pl.col("year").is_between(end_year - window_size + 1, end_year)
             )
-            for end_year in range(min_year, max_year + 1)
-        }
+            # Guard against missing records
+            if not window_df.is_empty():
+                results[end_year] = _calculate_core_centralization(window_df)
+        return results
+
     raise ValueError(f"Unknown mode: {mode}")
 
 
@@ -501,7 +535,9 @@ def compute_newcomers_onboarding(
 
     if proposal_base.is_empty():
         return (
-            {"val": 0.0, "ci_low": 0.0, "ci_high": 0.0} if mode == "most_recent" else {}
+            {"val": 0.0, "ci_low": None, "ci_high": None}
+            if mode == "most_recent"
+            else {}
         )
 
     def _score_fn(sliced_df: pl.DataFrame) -> float:
@@ -540,7 +576,9 @@ def compute_newcomers_onboarding(
             else 0.0
         )
 
-    def _calculate_core_onboarding(sliced_df: pl.DataFrame) -> Dict[str, float]:
+    def _calculate_core_onboarding(
+        sliced_df: pl.DataFrame,
+    ) -> Dict[str, Union[float, None]]:
         return _bootstrap_interval(
             sliced_df, _score_fn, cluster_col="proposal_id", n_bootstraps=n_bootstraps
         )
@@ -555,14 +593,16 @@ def compute_newcomers_onboarding(
 
     if mode == "all_windows":
         min_year = proposal_base.select(pl.col("year").min()).item()
-        return {
-            end_year: _calculate_core_onboarding(
-                proposal_base.filter(
-                    pl.col("year").is_between(end_year - window_size + 1, end_year)
-                )
+        results = {}
+        for end_year in range(min_year, max_year + 1):
+            window_df = proposal_base.filter(
+                pl.col("year").is_between(end_year - window_size + 1, end_year)
             )
-            for end_year in range(min_year, max_year + 1)
-        }
+            # Guard against missing data slices
+            if not window_df.is_empty():
+                results[end_year] = _calculate_core_onboarding(window_df)
+        return results
+
     raise ValueError(f"Unknown mode: {mode}")
 
 
@@ -576,7 +616,9 @@ def compute_representation_comment_gini(
 
     if df.is_empty():
         return (
-            {"val": 0.0, "ci_low": 0.0, "ci_high": 0.0} if mode == "most_recent" else {}
+            {"val": 0.0, "ci_low": None, "ci_high": None}
+            if mode == "most_recent"
+            else {}
         )
 
     def _score_fn(sliced_df: pl.DataFrame) -> float:
@@ -589,7 +631,9 @@ def compute_representation_comment_gini(
         )
         return float(gini_expr.item()) if not gini_expr.is_empty() else 0.0
 
-    def _calculate_core_representation(sliced_df: pl.DataFrame) -> Dict[str, float]:
+    def _calculate_core_representation(
+        sliced_df: pl.DataFrame,
+    ) -> Dict[str, Union[float, None]]:
         return _bootstrap_interval(
             sliced_df, _score_fn, cluster_col="author_id", n_bootstraps=n_bootstraps
         )
@@ -604,14 +648,16 @@ def compute_representation_comment_gini(
 
     if mode == "all_windows":
         min_year = df.select(pl.col("year").min()).item()
-        return {
-            end_year: _calculate_core_representation(
-                df.filter(
-                    pl.col("year").is_between(end_year - window_size + 1, end_year)
-                )
+        results = {}
+        for end_year in range(min_year, max_year + 1):
+            window_df = df.filter(
+                pl.col("year").is_between(end_year - window_size + 1, end_year)
             )
-            for end_year in range(min_year, max_year + 1)
-        }
+            # Guard against missing comment logs
+            if not window_df.is_empty():
+                results[end_year] = _calculate_core_representation(window_df)
+        return results
+
     raise ValueError(f"Unknown mode: {mode}")
 
 
@@ -637,7 +683,6 @@ def get_governance_statistics(
 ) -> List[GovernanceProjectStats]:
     """Calculates structured trend lines and multi-year profiles with strict typing."""
 
-    # Mapping registry to link domains to their engine and target structural attributes
     computation_registry = {
         "independence": (compute_independence_hhi, "independence"),
         "independence_no_discard_all_unique": (

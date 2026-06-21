@@ -3,12 +3,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
-from matplotlib import ticker
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import polars as pl
 import seaborn as sns
+from matplotlib import ticker
 from matplotlib.ticker import MaxNLocator
 from scipy.cluster.hierarchy import cophenet, dendrogram, linkage
 from scipy.spatial.distance import pdist
@@ -39,9 +39,26 @@ def plot_consolidated_line_charts(
     dimensions: List[str],
     font_config: FontSizeConfig,
 ) -> None:
-    """Plots accurate trends displaying continuous line charts overlaid with 95% CI bands."""
+    """Plots accurate trends displaying continuous line charts overlaid with 95% CI bands.
+
+    Guarantees perfectly consistent output widths, exact top-alignment of the legend,
+    and identical start/end years across all generated plots based entirely on available data.
+    """
+    output_dir = output_dir / "line_charts"
     output_dir.mkdir(parents=True, exist_ok=True)
     colors = plt.colormaps["tab10"](np.linspace(0, 1, max(10, len(projects_stats))))
+
+    # Gather all years across all projects and dimensions
+    all_years = set()
+    for p_stat in projects_stats:
+        for dim in dimensions:
+            attr_name = _resolve_attr_name(dim)
+            timeline_profile = getattr(p_stat.metrics, attr_name, None)
+            if timeline_profile and timeline_profile.windows:
+                all_years.update(timeline_profile.windows.keys())
+
+    min_year = min(all_years, default=None)
+    max_year = max(all_years, default=None)
 
     for dim in dimensions:
         fig, ax = plt.subplots(figsize=(11, 6))
@@ -61,7 +78,6 @@ def plot_consolidated_line_charts(
 
                     color = colors[idx % len(colors)]
 
-                    # Core Point Estimation Line
                     ax.plot(
                         years,
                         vals,
@@ -71,20 +87,24 @@ def plot_consolidated_line_charts(
                         label=p_stat.project_name,
                         zorder=3,
                     )
-                    # Confidence Interval Ribbon Area
                     ax.fill_between(
                         years, lows, highs, color=color, alpha=0.15, zorder=2
                     )
 
+            # Updated title formatting here
             ax.set_title(
-                f"Trend Analysis: {dim} (with 95% CI)",
+                f"{dim} (with 95% CI)",
                 fontsize=font_config.title_fontsize,
                 fontweight="bold",
                 pad=15,
             )
             ax.set_xlabel("Year", fontsize=font_config.label_fontsize)
-            ax.set_ylabel("Score Profile Index", fontsize=font_config.label_fontsize)
-            ax.set_ylim(-0.05, 1.05)
+            ax.set_ylabel("Score", fontsize=font_config.label_fontsize)
+
+            if min_year is not None and max_year is not None:
+                ax.set_xlim(min_year - 0.25, max_year + 0.25)
+
+            ax.set_ylim(0, 1)
             ax.grid(True, linestyle="--", alpha=0.6)
             ax.xaxis.set_major_locator(MaxNLocator(integer=True))
             ax.tick_params(
@@ -94,14 +114,19 @@ def plot_consolidated_line_charts(
             if has_data:
                 ax.legend(
                     loc="upper left",
-                    bbox_to_anchor=(1.02, 1),
+                    bbox_to_anchor=(1.02, 1.0),
+                    borderaxespad=0.0,
                     frameon=True,
                     fontsize=font_config.label_fontsize,
                 )
 
-            plt.tight_layout()
+            plt.subplots_adjust(left=0.08, right=0.75, top=0.88, bottom=0.12)
+
             safe_filename = "".join(c if c.isalnum() else "_" for c in dim).lower()
-            plt.savefig(output_dir / f"line_{safe_filename}.svg", bbox_inches="tight")
+            output_path = output_dir / f"line_{safe_filename}.svg"
+            plt.savefig(output_path)
+            print(f"Saved synchronized-axis plot to: {output_path}")
+
         finally:
             plt.close(fig)
 
@@ -264,7 +289,7 @@ def plot_combined_parallel_coordinates(
             fontweight="bold",
         )
         ax.tick_params(axis="y", labelsize=font_config.annot_fontsize)
-        ax.set_ylim(-0.05, 1.05)
+        ax.set_ylim(0, 1)
         ax.grid(axis="y", linestyle="--", alpha=0.5)
         ax.legend(
             loc="upper left",
