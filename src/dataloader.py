@@ -1,4 +1,3 @@
-import os
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -351,7 +350,7 @@ def load_all_projects(
 
     all_contexts = []
 
-    debug = os.getenv("DEBUG", "False").lower() == "true"
+    # debug = os.getenv("DEBUG", "False").lower() == "true"
 
     # Extract clean contexts from each file individually
     for path in db_paths:
