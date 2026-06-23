@@ -364,11 +364,10 @@ def load_all_projects(
             all_contexts.extend(db_contexts)
         finally:
             conn.close()
-        
+
         # if debug:
         #     print("DEBUG: only load one project")
         #     break
-        
 
     # Final sort across all extracted projects
     return sorted(all_contexts, key=lambda c: c.project_name.lower())

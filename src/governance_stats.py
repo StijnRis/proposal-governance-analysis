@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Literal, Tuple
 
 import numpy as np
 import pandas as pd
-import scipy.stats as stats
 from scipy import stats
 
 from governance_calc import GovernanceProjectStats, MetricInterval

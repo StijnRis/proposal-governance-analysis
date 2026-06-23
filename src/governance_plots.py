@@ -440,7 +440,10 @@ def plot_dimensions_correlation(
                     "fontsize": font_config.annot_fontsize,
                     "fontweight": "bold",
                 },
-                cbar_kws={"label": cbar_label, "shrink": 0.8},
+                cbar_kws={
+                    "label": cbar_label,
+                    "format": ticker.FormatStrFormatter("%.1f"),
+                },
                 ax=ax,
             )
 
@@ -806,6 +809,7 @@ def plot_clustered_governance_heatmap(
             else "Governance Dimensions Clustered Heatmap\n(Ward's Linkage)"
         )
 
+        # Adjusted figsize width from 13 to 10 to compress the cell widths
         g = sns.clustermap(
             df_data,
             row_linkage=Z,
@@ -815,20 +819,23 @@ def plot_clustered_governance_heatmap(
             vmax=1.0,
             annot=True,
             fmt=".2f",
-            annot_kws={"fontsize": font_config.annot_fontsize, "fontweight": "bold"},
+            annot_kws={
+                "fontsize": font_config.annot_fontsize + 4,
+                "fontweight": "bold",
+            },
             cbar_kws={"label": cbar_label},
             dendrogram_ratio=(0.18, 0.04),
-            figsize=(13, 10),
+            figsize=(10, 10),
         )
 
         try:
             ax = g.ax_heatmap
 
-            # Reformat label visuals using your structured FontConfig parameters
+            # Reformat label visuals: Rotated x-labels to 45 degrees and aligned them to the right
             ax.set_xticklabels(
                 wrapped_labels,
-                rotation=0,
-                ha="center",
+                rotation=45,
+                ha="right",
                 fontsize=font_config.label_fontsize,
             )
 
@@ -839,7 +846,7 @@ def plot_clustered_governance_heatmap(
             )
 
             # Label padding adjustments to cleanly handle expanded font sizes
-            ax.tick_params(axis="x", pad=12)
+            ax.tick_params(axis="x", pad=4)
             ax.tick_params(axis="y", pad=12)
 
             # --- EXPOSE AND FORMAT THE RAW DISTANCE SCALE ---
@@ -864,12 +871,14 @@ def plot_clustered_governance_heatmap(
                 length=5,
             )
 
+            # Updated label text with newline and removed bold/semibold formatting
             dendro_ax.set_xlabel(
-                "Linkage Distance",
+                "Linkage\nDistance",
                 fontsize=font_config.label_fontsize,
-                fontweight="semibold",
                 labelpad=10,
             )
+
+            dendro_ax.grid(True, axis="x", linestyle=":", alpha=0.5)
 
             dendro_ax.grid(True, axis="x", linestyle=":", alpha=0.5)
 
@@ -917,7 +926,7 @@ def plot_clustered_governance_heatmap(
             g.ax_cbar.set_position(
                 [
                     heatmap_box.x1
-                    + 0.16,  # Added safe spacing margin padding on the X-axis
+                    + 0.18,  # Added safe spacing margin padding on the X-axis
                     heatmap_box.y0,  # Syncs baseline alignment to match the heatmap's bottom boundary exactly
                     cbar_box.width,  # Retains original balanced bar thickness scale width
                     heatmap_box.height,  # Stretches vertical layout to match the matrix grid height 1:1
