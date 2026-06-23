@@ -9,6 +9,8 @@ Research codebase for analysing how governance metrics evolve across multiple op
 
 This project has been made as part of the research project 2026 at TU Delft (https://github.com/TU-Delft-CSE/Research-Project).
 
+The scraper for collecting the data can be found at: https://gitlab.ewi.tudelft.nl/sspinellis/cse3000-sep
+
 ### Key Points
 
 * **Language:** Python 3.13
@@ -70,9 +72,3 @@ Reports and visualisations are written to `output/<timestamp>/`.
 ## Contributing
 
 Follow the project's style: concise, typed Python functions, single-purpose helpers, and fail-fast checks.
-
-
-
-## Contact
-
-For questions about the dataset or analysis approach, open an issue in this repository.
