@@ -8,7 +8,6 @@ import pytest
 # Import your code here. Assuming your code is in a module named 'governance_stats'
 from governance_calc import (
     RELEASE_YEARS,
-    GovernanceProjectStats,
     MetricInterval,
     _bootstrap_interval,
     _polars_gini_expr,
@@ -44,7 +43,7 @@ def empty_context():
             schema={
                 "proposal_id": pl.Int64,
                 "revision_index": pl.Int64,
-                "created_at": pl.Datetime, 
+                "created_at": pl.Datetime,
             },
         ),
         proposal_revision_authors=pl.DataFrame(
@@ -168,26 +167,21 @@ def test_bootstrap_interval_fallback():
 def test_bootstrap_interval_execution_and_bounds():
     """Verifies that bootstrap runs resampling when clusters >= 5 and bounds are sane."""
     # Data with 6 unique clusters (1 through 6) to pass the cluster len check
-    df = pl.DataFrame({
-        "cluster": [1, 2, 3, 4, 5, 6],
-        "value": [10.0, 15.0, 50.0, 55.0, 90.0, 100.0]
-    })
+    df = pl.DataFrame(
+        {"cluster": [1, 2, 3, 4, 5, 6], "value": [10.0, 15.0, 50.0, 55.0, 90.0, 100.0]}
+    )
 
     def calc_mean(sliced_df):
         return sliced_df["value"].mean()
 
     # Run with a 95% CI
     res = _bootstrap_interval(
-        df, 
-        calc_mean, 
-        cluster_col="cluster", 
-        n_bootstraps=100, 
-        ci=0.95
+        df, calc_mean, cluster_col="cluster", n_bootstraps=100, ci=0.95
     )
 
     # 1. Assert the point estimate is calculated correctly
     assert res["val"] == pytest.approx(53.3333, rel=1e-4)
-    
+
     # 2. Assert variance bounds remain strictly inside the logical range of data
     assert res["ci_low"] >= 10.0
     assert res["ci_high"] <= 100.0
@@ -195,19 +189,22 @@ def test_bootstrap_interval_execution_and_bounds():
 
 def test_bootstrap_interval_deterministic_seeding():
     """Asserts that the internal seed management renders perfectly reproducible results."""
-    df = pl.DataFrame({
-        "cluster": [1, 2, 3, 4, 5, 6],
-        "value": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
-    })
-    
+    df = pl.DataFrame(
+        {"cluster": [1, 2, 3, 4, 5, 6], "value": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]}
+    )
+
     def calc_mean(sliced_df):
         return sliced_df["value"].mean()
 
     # Execute twice independently
-    res_first = _bootstrap_interval(df, calc_mean, cluster_col="cluster", n_bootstraps=50)
-    res_second = _bootstrap_interval(df, calc_mean, cluster_col="cluster", n_bootstraps=50)
+    res_first = _bootstrap_interval(
+        df, calc_mean, cluster_col="cluster", n_bootstraps=50
+    )
+    res_second = _bootstrap_interval(
+        df, calc_mean, cluster_col="cluster", n_bootstraps=50
+    )
 
-    # Because you used np.random.default_rng(42) internally, 
+    # Because you used np.random.default_rng(42) internally,
     # these values must match down to the decimal point across test invocations.
     assert res_first["ci_low"] == res_second["ci_low"]
     assert res_first["ci_high"] == res_second["ci_high"]
@@ -245,7 +242,7 @@ def test_compute_pluralism_all_windows(populated_context):
         populated_context, window_size=1, mode="all_windows", n_bootstraps=5
     )
 
-    # Our populated context has events spanning up to 2026. 
+    # Our populated context has events spanning up to 2026.
     # compute_pluralism_author_gini does not subtract 1 from max_year.
     assert 2024 in res
     assert 2025 in res
@@ -261,10 +258,10 @@ def test_compute_pluralism_all_windows(populated_context):
 
 def test_get_governance_statistics_pipeline(populated_context):
     """Tests the full orchestration step looping over a list of projects."""
-    
+
     # Mock RELEASE_YEARS to include our test project name
     mocked_release_years = {**RELEASE_YEARS, "Alpha Project": 2024}
-    
+
     # Patch the RELEASE_YEARS dictionary in the governance_calc module
     with patch("governance_calc.RELEASE_YEARS", mocked_release_years):
         results = get_governance_statistics([populated_context])
