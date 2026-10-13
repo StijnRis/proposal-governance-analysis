@@ -5,32 +5,9 @@ import polars as pl
 from dataloader import IndividualProjectContext
 
 
-def merge_duplicate_people(
-    contexts: List[IndividualProjectContext],
-) -> List[IndividualProjectContext]:
-    """
-    Merges all persons across all contexts that share:
-    1. The exact same full_name (or are both NULL).
-    2. The same identifier payload based on rules:
-       - If identifier_type is 'email', domain can be different.
-       - For other types, both domain and identifier_type must match.
-
-    Updates all foreign key references across the dataframes inside each context.
-    """
-    if not contexts:
-        print("No contexts provided.")
-        return contexts
-
-    # --- 1. Consolidate Global Views of Person and PersonIdentifier ---
-    global_persons = pl.concat([c.persons for c in contexts]).unique(
-        subset=["person_id"]
-    )
-    global_identifiers = pl.concat([c.person_identifiers for c in contexts]).unique()
-
-    if global_persons.is_empty() or global_identifiers.is_empty():
-        print("Person or Identifier tables are empty. No merges performed.")
-        return contexts
-
+def build_person_id_mapping(
+    global_persons: pl.DataFrame, global_identifiers: pl.DataFrame
+) -> dict[int, int]:
     # --- 2. Separate Identifiers by Logic Types ---
     emails = global_identifiers.filter(pl.col("identifier_type") == "email")
     others = global_identifiers.filter(pl.col("identifier_type") != "email")
@@ -55,8 +32,7 @@ def merge_duplicate_people(
     id_overlaps = pl.concat([email_overlaps, other_overlaps]).unique()
 
     if id_overlaps.is_empty():
-        print("Merged 0 duplicate records (0 distinct people affected).")
-        return contexts
+        return {}
 
     # --- 3. Filter Overlaps by Name Consistency (Same Name or Both NULL) ---
     name_checks = id_overlaps.join(global_persons, on="person_id", how="inner").join(
@@ -69,12 +45,11 @@ def merge_duplicate_people(
 
     duplicate_pairs = name_checks.filter(
         (pl.col("full_name") == pl.col("full_name_other"))
-        | (pl.col("full_name").is_null() & pl.col("full_name_other").is_null())
+        & (pl.col("full_name").str.strip_chars().str.len_chars() > 0)
     ).select(["person_id", "person_id_other"])
 
     if duplicate_pairs.is_empty():
-        print("Merged 0 duplicate records (0 distinct people affected).")
-        return contexts
+        return {}
 
     # --- 4. Resolve Groups Into an ID Mapping Dictionary (Graph Components) ---
     adj_list = {}
@@ -83,9 +58,8 @@ def merge_duplicate_people(
         adj_list.setdefault(u, set()).add(v)
         adj_list.setdefault(v, set()).add(u)
 
-    id_mapping = {}
-    visited = set()
-    distinct_people_merged_count = 0
+    id_mapping: dict[int, int] = {}
+    visited: set[int] = set()
 
     for node in adj_list:
         if node not in visited:
@@ -102,12 +76,42 @@ def merge_duplicate_people(
             for old_id in component:
                 id_mapping[old_id] = survivor_id
 
-            distinct_people_merged_count += 1
+    return id_mapping
 
+
+def merge_duplicate_people(
+    contexts: List[IndividualProjectContext],
+) -> List[IndividualProjectContext]:
+    """
+    Merges all persons across all contexts that share:
+    1. The exact same non-empty full_name.
+    2. The same identifier payload based on rules:
+       - If identifier_type is 'email', domain can be different.
+       - For other types, both domain and identifier_type must match.
+
+    Updates all foreign key references across the dataframes inside each context.
+    """
+    if not contexts:
+        print("No contexts provided.")
+        return contexts
+
+    global_persons = pl.concat([c.persons for c in contexts]).unique(
+        subset=["person_id"]
+    )
+    global_identifiers = pl.concat([c.person_identifiers for c in contexts]).unique()
+
+    if global_persons.is_empty() or global_identifiers.is_empty():
+        print("Person or Identifier tables are empty. No merges performed.")
+        return contexts
+
+    id_mapping = build_person_id_mapping(global_persons, global_identifiers)
+    distinct_people_merged_count = len(set(id_mapping.values()))
     total_records_removed = len(id_mapping) - distinct_people_merged_count
     print(
         f"Merged {total_records_removed} duplicate records across {distinct_people_merged_count} distinct people."
     )
+    if not id_mapping:
+        return contexts
 
     # Convert mapping to a Polars DataFrame for joining
     mapping_df = pl.DataFrame(
